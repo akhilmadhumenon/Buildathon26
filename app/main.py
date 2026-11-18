@@ -405,7 +405,10 @@ def triggers(connection=Depends(_db)):
 
 
 def _kisan_url() -> str:
-    return (os.environ.get("KISAN_URL") or os.environ.get("RAILWAY_SERVICE_KISANCALL_URL") or "").strip().rstrip("/")
+    raw = (os.environ.get("KISAN_URL") or os.environ.get("RAILWAY_SERVICE_KISANCALL_URL") or "").strip().rstrip("/")
+    if raw and "://" not in raw:
+        raw = "https://" + raw
+    return raw
 
 
 @app.post("/v1/admin/triggers/{trigger_id}/dial")
