@@ -206,6 +206,15 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(detect_language("Mujhe tamatar bechna hai"), "hi")
         raitha._CACHE.clear()
 
+    def test_a_hindi_sentence_is_not_left_in_kannada(self) -> None:
+        from kisan.gemini_reply import language_nudge
+
+        nudge = language_nudge("आज के चावल का दाम क्या है?", "ಟೊಮೆಟೊ ಬೆಲೆ 1800.")
+        self.assertIn("Hindi", nudge)
+        self.assertEqual(language_nudge("आज के चावल का दाम क्या है?", "चावल 3701 रुपये क्विंटल है।"), "")
+        self.assertIn("Kannada", language_nudge("ಟೊಮೆಟೊ ಬೆಲೆ ಎಷ್ಟು?", "टमाटर 1800 रुपये है।"))
+        self.assertIn("English", language_nudge("What is the tomato price?", "ಟೊಮೆಟೊ ಬೆಲೆ 1800."))
+
     def test_a_sell_question_is_not_a_village(self) -> None:
         from kisan.maps import named_place
 

@@ -33,6 +33,7 @@ Latin letters mean the spoken reply is English. Kannada script means Kannada. De
 Do not answer an English sentence in Kannada or Hindi.
 Supported languages: Kannada in Kannada script, Hindi in Devanagari, English in English.
 Handle natural code-switching between these languages. If the farmer switches languages, switch immediately.
+An earlier call in another language does not count. The latest sentence on this call decides the reply language.
 Do not translate the farmer's question before answering.
 Use simple, conversational vocabulary commonly understood by farmers.
 Avoid overly formal language, technical jargon, and unnecessarily long sentences.
@@ -126,6 +127,7 @@ Keep recommendations concise and practical.
 Use the supplied conversation history, the earlier-calls block, and caller facts to maintain continuity.
 The conversation history is only this call. Earlier calls are in the earlier-calls block.
 Remember relevant details such as the farmer's district, crop, preferred mandi, harvest quantity, and expected harvest date.
+When they switch language, keep those details and change only the language of the reply.
 Do not ask for information the farmer has already provided.
 Use previous details only when relevant to the current question.
 If the farmer corrects an earlier detail, use the latest correction.
@@ -164,7 +166,7 @@ The following are the only authoritative facts available for this response:
 
 {facts}
 
-Earlier calls for this number. Use the place, crop, and what was already answered. A price here is from an earlier call, not today's mandi price.
+Earlier calls for this number. Use the place, crop, and what was already answered. Do not copy the language of those calls. A price here is from an earlier call, not today's mandi price.
 
 {memory}
 
@@ -216,7 +218,11 @@ def known_place(name: str) -> str:
     return ""
 
 
-_ENGLISH_NUDGE = "\nThe farmer's latest sentence is English. The say field must be English."
+_NUDGE = {
+    "en": "\nThe farmer's latest sentence is English. The say field must be English. Keep the same place, crop, and answer. Change only the language.",
+    "hi": "\nThe farmer's latest sentence is Hindi in Devanagari. The say field must be Hindi in Devanagari. Keep the same place, crop, and answer. Change only the language.",
+    "kn": "\nThe farmer's latest sentence is Kannada in Kannada script. The say field must be Kannada in Kannada script. Keep the same place, crop, and answer. Change only the language.",
+}
 
 
 def _script(text: str) -> str:
@@ -227,8 +233,14 @@ def _script(text: str) -> str:
     return "en"
 
 
-def needs_english(latest: str, say: str) -> bool:
-    return bool(say) and _script(latest) == "en" and _script(say) != "en"
+def language_nudge(latest: str, say: str) -> str:
+    """A second-pass instruction when the reply is not in the farmer's latest language."""
+    if not say:
+        return ""
+    wanted = _script(latest)
+    if _script(say) == wanted:
+        return ""
+    return _NUDGE[wanted]
 
 
 async def build_prompt(
@@ -297,8 +309,9 @@ async def gemini_reply(
         say, place, end_call = parse_gemini_reply(raw or "")
         say = _without_stock_opener(say)
         latest = next((text for role, text in reversed(turns) if role == "user"), "")
-        if needs_english(latest, say):
-            payload = _gemini_payload(model, prompt + _ENGLISH_NUDGE)
+        nudge = language_nudge(latest, say)
+        if nudge:
+            payload = _gemini_payload(model, prompt + nudge)
             raw = await _post_gemini(session, model, key, payload)
             retried, place, end_call = parse_gemini_reply(raw or "")
             retried = _without_stock_opener(retried)

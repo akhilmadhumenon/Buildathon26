@@ -9,10 +9,9 @@ import os
 import aiohttp
 
 from kisan.gemini_reply import (
-    _ENGLISH_NUDGE,
     _without_stock_opener,
     build_prompt,
-    needs_english,
+    language_nudge,
     parse_gemini_reply,
     settle_reply,
 )
@@ -116,8 +115,9 @@ async def sarvam_reply(
         say, place, end_call = parse_gemini_reply(raw or "")
         say = _without_stock_opener(say)
         latest = next((text for role, text in reversed(turns) if role == "user"), "")
-        if needs_english(latest, say):
-            raw = await _post_sarvam(session, model, key, prompt + _ENGLISH_NUDGE)
+        nudge = language_nudge(latest, say)
+        if nudge:
+            raw = await _post_sarvam(session, model, key, prompt + nudge)
             retried, place, end_call = parse_gemini_reply(raw or "")
             retried = _without_stock_opener(retried)
             if retried:
