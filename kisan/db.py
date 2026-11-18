@@ -54,6 +54,9 @@ CROP_ALIASES = {
     "finger millet": "ragi",
     "tomato": "tomato",
     "tomatoes": "tomato",
+    "tamatar": "tomato",
+    "tamater": "tomato",
+    "tamaatar": "tomato",
     "maize": "maize",
     "corn": "maize",
     "paddy": "paddy",
@@ -77,6 +80,9 @@ CROP_ALIASES = {
     "ಟೊಮ್ಯಾಟೊ": "tomato",
     "ರಾಗಿ": "ragi",
     "ಮೆಕ್ಕೆಜೋಳ": "maize",
+    "ಜೋಳ": "maize",
+    "jola": "maize",
+    "jowar": "maize",
     "ಭತ್ತ": "paddy",
     "ಈರುಳ್ಳಿ": "onion",
     "ಮೆಣಸಿನಕಾಯಿ": "chilli",
@@ -92,6 +98,24 @@ CROP_ALIASES = {
     "ಬಾಳೆಹಣ್ಣು": "banana",
     "ಮಾವಿನಹಣ್ಣು": "mango",
     "ದ್ರಾಕ್ಷಿ": "grapes",
+    "potato": "potato",
+    "potatoes": "potato",
+    "आलू": "potato",
+    "ಆಲೂಗಡ್ಡೆ": "potato",
+    "tur": "tur",
+    "arhar": "tur",
+    "toor": "tur",
+    "pigeon pea": "tur",
+    "red gram": "tur",
+    "अरहर": "tur",
+    "तूर": "tur",
+    "ತೊಗರಿ": "tur",
+    "groundnut": "groundnut",
+    "groundnuts": "groundnut",
+    "peanut": "groundnut",
+    "peanuts": "groundnut",
+    "मूंगफली": "groundnut",
+    "ಕಡಲೆಕಾಯಿ": "groundnut",
 }
 
 PLACE_ALIASES = {
@@ -115,6 +139,13 @@ PLACE_ALIASES = {
     "bellary": "Ballari",
     "shivamogga": "Shivamogga",
     "shimoga": "Shivamogga",
+    "dharwad": "Dharwad",
+    "धारवाड़": "Dharwad",
+    "ಧಾರವಾಡ": "Dharwad",
+    "chitradurga": "Chitradurga",
+    "kalaburagi": "Kalaburagi",
+    "gulbarga": "Kalaburagi",
+    "kalburgi": "Kalaburagi",
     "कोलार": "Kolar",
     "मंड्या": "Mandya",
     "हुबली": "Hubballi",
@@ -145,6 +176,9 @@ DISTRICT_COORDS = {
     "raichur": (16.21, 77.36),
     "ballari": (15.14, 76.92),
     "shivamogga": (13.93, 75.57),
+    "dharwad": (15.46, 75.01),
+    "chitradurga": (14.23, 76.40),
+    "kalaburagi": (17.33, 76.83),
 }
 
 
@@ -400,6 +434,9 @@ KEEPING = {
     "maize": (90, "if dry"),
     "paddy": (180, "after drying"),
     "ragi": (180, "after drying"),
+    "potato": (60, "if cured and dry"),
+    "tur": (180, "after drying"),
+    "groundnut": (90, "if dry"),
 }
 
 SEED_CROPS = [

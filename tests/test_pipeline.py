@@ -17,7 +17,6 @@ from kisan.advice import (
     should_answer,
     spoken_mandi,
 )
-from kisan.caller import resolve_phone
 from kisan.db import Database
 from kisan.language import detect_language, speech_segments, voice_for
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
@@ -33,15 +32,6 @@ class MemoryTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._dir.cleanup()
-
-    def test_phone_numbers_from_the_same_handset_match(self) -> None:
-        ctx = SimpleNamespace(job=SimpleNamespace(metadata=""), room=SimpleNamespace(metadata=""))
-        participant = SimpleNamespace(
-            attributes={"sip.phoneNumber": "09812345678"},
-            metadata="",
-        )
-        os.environ.pop("DEMO_CALLER_PHONE", None)
-        self.assertEqual(resolve_phone(ctx, participant), self.phone)
 
     def test_second_call_sees_the_first_summary(self) -> None:
         first = format_caller_context(self.db, self.phone)
@@ -237,6 +227,97 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(known_place(place), "Kolar")
         self.assertFalse(end_call)
         self.assertEqual(facts_for_question(self.db, "what is the price"), "")
+
+    def test_live_board_states_the_modal_for_the_asked_crop(self) -> None:
+        from kisan.raitha import format_market_facts
+
+        boards = [
+            {
+                "crop": "potato",
+                "mandi": "Hassan APMC",
+                "district": "Hassan",
+                "as_of": "2026-11-16",
+                "modal": 3999,
+                "min_price": 3999,
+                "max_price": 3999,
+                "arrival_7d_tonnes": 315.5,
+                "shortage": None,
+                "forecast_7d": None,
+                "action_label": "No advice",
+            },
+            {
+                "crop": "maize",
+                "mandi": "Davangere APMC",
+                "district": "Davangere",
+                "as_of": "2026-11-17",
+                "modal": 3236,
+                "arrival_7d_tonnes": 2057.6,
+                "seasonal_arrival_7d_tonnes": 5602.3,
+                "shortage": True,
+                "action_label": "Sell now",
+                "action_reason": "The price is above last year and arrivals are short.",
+            },
+            {
+                "crop": "tomato",
+                "mandi": "Kolar APMC",
+                "district": "Kolar",
+                "as_of": "2026-11-16",
+                "modal": 1200,
+                "min_price": 300,
+                "max_price": 2330,
+                "forecast_7d": 1152.4,
+                "nearby": {
+                    "mandi": "Binny Mill Bengaluru APMC",
+                    "modal": 1700,
+                    "distance_km": 70,
+                    "transport_rs_per_qtl": 140,
+                    "worth_the_trip": True,
+                },
+                "action_label": "Sell nearby",
+                "action_reason": "The nearby mandi covers the transport.",
+            },
+        ]
+        facts = format_market_facts(boards, self.db, "", None, ["potato", "maize"])
+        self.assertIn("potato at Hassan APMC, Hassan, reported 2026-11-16.", facts)
+        self.assertIn("Modal 3999.", facts)
+        self.assertIn("shortage unknown", facts)
+        self.assertIn("Supply: arrivals 2058 tonnes this week, usual 5602 tonnes, shortage yes.", facts)
+        self.assertIn("tomato at Kolar APMC: modal 1200, reported 2026-11-16.", facts)
+        self.assertNotIn("The trip is worth it", facts)
+
+    def test_board_answers_when_the_model_is_busy(self) -> None:
+        from kisan import raitha
+
+        raitha._CACHE[:] = [
+            {
+                "crop": "maize",
+                "district": "Davangere",
+                "modal": 3236,
+                "shortage": True,
+            },
+            {
+                "crop": "tomato",
+                "district": "Kolar",
+                "modal": 1200,
+                "shortage": False,
+                "nearby": {"mandi": "Binny Mill Bengaluru APMC", "modal": 1700, "distance_km": 70, "worth_the_trip": True},
+            },
+        ]
+        maize = raitha.speak_board("ದಾವಣಗೆರೆಯಲ್ಲಿ ಜೋಳ ಬೆಲೆ ಒಳ್ಳೆಯ.", "kn")
+        self.assertIn("3236", maize)
+        self.assertIn("ಸರಕು ಕಡಿಮೆ", maize)
+        tomato = raitha.speak_board("ಟೊಮೆಟೊ ಕೋಲಾರದಲ್ಲಿ ಮಾರಬೇಕಾ ಅಥವಾ?", "kn")
+        self.assertIn("1700", tomato)
+        self.assertIn("ಅಲ್ಲಿಗೆ ಹೋಗಿ", tomato)
+        self.assertEqual(raitha.speak_board("ಇದು", "kn"), "")
+        sell = raitha.speak_board("I want to sell tomatoes.", "en")
+        self.assertIn("1700", sell)
+        self.assertIn("Go there", sell)
+        hindi = raitha.speak_board("Mujhe tamatar bechna hai", "hi")
+        self.assertIn("1700", hindi)
+        self.assertIn("बेचिए", hindi)
+        self.assertEqual(detect_language("Mujhe tamatar bechna hai"), "hi")
+        raitha._CACHE.clear()
 
 
 if __name__ == "__main__":

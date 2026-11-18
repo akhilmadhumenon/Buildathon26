@@ -26,6 +26,8 @@ def detect_language(text: str, hint: str | None = None, current: str | None = No
     script = _script_language(text)
     if script in {"kn", "hi"}:
         return script
+    if _roman_hindi(text):
+        return "hi"
 
     hinted = _from_hint(hint)
     if hinted in {"kn", "hi"}:
@@ -68,6 +70,15 @@ def speech_segments(text: str, language: str) -> list[str]:
         cleaned = re.sub(r"\.(?=\s|$)", "।", cleaned)
     parts = [part.strip() for part in _SENTENCE_BREAK.split(cleaned) if part.strip()]
     return parts or [cleaned]
+
+
+def _roman_hindi(text: str) -> bool:
+    words = {word.lower() for word in re.findall(r"[A-Za-z]+", text or "")}
+    markers = {
+        "mujhe", "bechna", "bechne", "becho", "bech", "chahiye", "kitna", "kitne",
+        "kahan", "batao", "bataiye", "bhav", "bhaav", "rupaye", "rupya",
+    }
+    return bool(words & markers)
 
 
 def _from_hint(hint: str | None) -> str | None:

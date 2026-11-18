@@ -9,7 +9,7 @@ import re
 
 import aiohttp
 
-from kisan.advice import market_facts
+from kisan.raitha import live_facts
 from kisan.db import DISTRICT_COORDS, PLACE_ALIASES, Database, canonical_place
 from kisan.maps import caller_point, named_place
 from kisan.names import correct_transcript
@@ -65,6 +65,10 @@ Answer only what the farmer asks. Do not add another crop, mandi, timing, or pos
 
 When the farmer asks for a crop's price, identify the crop and mandi, check whether the mandi buys that crop, and identify whether they want today's price, a past price, or a forecast.
 Use only the supplied facts. State the price, unit, mandi, and relevant date clearly.
+The modal is the usual price per quintal. Min and max are the grade range. Say the range only when they ask about grade or quality.
+The reported date is the market day. Use that date. Do not call it today unless the facts say the report is from today.
+A 7-day figure is a prediction. If the facts have no prediction, do not invent one.
+When they ask only for a price, say the modal, the mandi, and the reported date.
 Never invent, estimate, calculate, or assume a price that is not present in the facts.
 Never present a predicted price as an actual market price.
 Clearly distinguish today's observed price from a forecast. If a forecast is available, call it a prediction or expected price.
@@ -72,12 +76,12 @@ If a requested date has no available data, explain that the information is unava
 If the farmer asks for today's price but only a forecast is available, explicitly say that it is a predicted price.
 Do not confuse prices across different crops, mandis, grades, or units.
 If the price is per quintal, explicitly say "per quintal".
-If the facts contain a price range, communicate the range rather than selecting an arbitrary value.
 
 5. Mandi selection
 
 If the farmer names a crop and a mandi that buys it, provide the relevant price from that mandi.
-If the mandi does not buy the crop, explain this politely, then name the nearest mandi that does, using only the supplied distances. Include the kilometres and today's price per quintal at that mandi.
+Each crop line names the mandi that reported it. If they name a different mandi, say the price you have is from the reported mandi. Do not claim another mandi buys or refuses the crop unless the facts say so.
+If the facts name a nearby mandi for that crop and they asked about another mandi or whether the trip is worth it, use that nearby line.
 If no suitable mandi is available in the facts, say so honestly.
 Never invent a mandi, its location, or its distance.
 
@@ -95,10 +99,11 @@ Never guess a place that is not in the facts.
 7. Price comparisons and selling recommendations
 
 Only provide a comparison or recommendation when the farmer asks for help deciding where or when to sell, or when their question clearly requires it.
-When the farmer's district is known, compare relevant mandi prices for the crop, today's price and the week-ahead forecast, and nearby mandis using the supplied distances.
-Recommend one practical option based on the supplied facts, and explain why it is preferable.
-Consider distance alongside price. Do not recommend travelling farther just because the price in the facts is higher if the facts do not establish that the difference is worthwhile.
-When they ask whether to sell now or wait, use today's price, the forecast, and how long that harvest keeps, then give one recommendation. Do not also describe the other choice.
+Use the crop's market line in the facts. Give one recommendation. Do not also describe the other choice.
+When they ask whether to sell at this mandi, or whether the price is good, follow that crop's advice. If shortage is yes, say this mandi has less supply than usual. If shortage is no or unknown, do not say the mandi is short of supply.
+When the advice is to sell at a nearby mandi, or they ask whether another mandi is better, recommend that mandi only when the facts say the trip is worth it. Say its price, the distance, and the transport cost. Do not say that mandi needs more supply unless the facts say so.
+Do not recommend a farther mandi when the facts say the trip is not worth it.
+When they ask whether to sell now or wait, follow that crop's advice and reason in the facts, then check how long the harvest keeps.
 A higher price is worth waiting for only when the crop keeps at least that long.
 If the harvest spoils sooner, recommend selling now, and say it will spoil before that higher price.
 If the answer depends on whether the fruit is already ripe and they have not said, ask only that, and do not explain both outcomes.
@@ -235,7 +240,7 @@ async def gemini_reply(
         conversation = "\n".join(f"{role}: {text}" for role, text in turns[-6:]) or "user: "
         prompt = (
             _PROMPT.replace("{places}", places)
-            .replace("{facts}", market_facts(db, phone, point))
+            .replace("{facts}", await live_facts(session, db, phone, point, turns))
             .replace("{conversation}", conversation)
         )
         payload = {

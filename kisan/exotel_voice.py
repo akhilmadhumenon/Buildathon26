@@ -21,13 +21,16 @@ from kisan.advice import (
     harvest_answer,
     mandi_answer,
     related_calls,
+    _is_closing,
+    _mentioned,
     should_answer,
     spoken_mandi,
 )
 from kisan.gemini_reply import gemini_reply
+from kisan.raitha import live_prices_enabled, speak_board
 from kisan.names import correct_transcript
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
-from kisan.db import Database, normalize_phone, now_iso
+from kisan.db import CROP_ALIASES, Database, normalize_phone, now_iso
 from kisan.language import SPEECH_PACE, SPEECH_PITCH, detect_language, speech_segments, voice_for
 from kisan.summary import render_summary
 
@@ -67,6 +70,12 @@ RETRY = {
     "en": "Sorry, please say that once more.",
     "hi": "माफ़ कीजिए, एक बार फिर बोलिए।",
     "kn": "ಕ್ಷಮಿಸಿ, ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ.",
+}
+
+MARKET_DOWN = {
+    "en": "I could not reach the market prices. Please ask once more.",
+    "hi": "मंडी भाव अभी नहीं मिल रहे। एक बार फिर पूछिए।",
+    "kn": "ಮಂಡಿ ಬೆಲೆ ಈಗ ಸಿಗಲಿಲ್ಲ. ಇನ್ನೊಮ್ಮೆ ಕೇಳಿ.",
 }
 
 TOOLS = [
@@ -219,6 +228,9 @@ class ExotelCall:
         except Exception:
             logger.exception("reply failed")
             answer, end_call = RETRY.get(self.language, RETRY["en"]), False
+        if not answer:
+            logger.info("no answer for %s", text[:80])
+            return
         self.language = detect_language(answer, current=self.language)
         logger.info("answer ready in %.2fs: %s", time.perf_counter() - started, answer[:160])
         await self.speak(answer)
@@ -409,6 +421,15 @@ async def answer_caller(
         if phone and place:
             db.save_farmer(phone, district=place)
         return say, end_call
+    if live_prices_enabled():
+        if _is_closing(question):
+            return GOODBYE.get(language, GOODBYE["en"]), True
+        spoken = speak_board(question, language)
+        if spoken:
+            return spoken, False
+        if _mentioned(question, CROP_ALIASES):
+            return MARKET_DOWN.get(language, MARKET_DOWN["en"]), False
+        return "", False
     quick = spoken_mandi(db, question, language, phone, earlier)
     if quick:
         return quick, quick in GOODBYE.values()
