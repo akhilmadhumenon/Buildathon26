@@ -52,11 +52,14 @@ MARKET_DOWN = {
     "kn": "ಮಂಡಿ ಬೆಲೆ ಈಗ ಸಿಗಲಿಲ್ಲ. ಇನ್ನೊಮ್ಮೆ ಕೇಳಿ.",
 }
 
-SALE_ASK = {
-    "en": "Namaste. This is RaithaLine. Maize at the Bengaluru market is short, and your maize is ready to sell. Will you sell it? Please say yes or no.",
-    "hi": "नमस्ते। राइठालाइन से बात हो रही है। बेंगलुरु मंडी में मक्का कम है, और आपकी मक्का बेचने लायक है। क्या आप बेचेंगे? हाँ या नहीं बोलिए।",
-    "kn": "ನಮಸ್ಕಾರ. ಇದು ರೈತಲೈನ್. ಬೆಂಗಳೂರು ಮಂಡಿಯಲ್ಲಿ ಮೆಕ್ಕೆಜೋಳ ಕಡಿಮೆ ಇದೆ, ನಿಮ್ಮ ಮೆಕ್ಕೆಜೋಳ ಮಾರಾಟಕ್ಕೆ ಸಿದ್ಧವಿದೆ. ಮಾರಾಟ ಮಾಡುವಿರಾ? ಹೌದು ಅಥವಾ ಇಲ್ಲ ಅನ್ನಿ.",
-}
+def sale_opening(language: str, reason: str) -> str:
+    """Automated calls start with hello and the desk's reason, then the yes or no."""
+    content = " ".join((reason or "Your crop is ready to sell.").split())
+    if language == "hi":
+        return f"Hello. {content} क्या आप बेचेंगे? हाँ या नहीं बोलिए।"
+    if language == "kn":
+        return f"Hello. {content} ಮಾರಾಟ ಮಾಡುವಿರಾ? ಹೌದು ಅಥವಾ ಇಲ್ಲ ಅನ್ನಿ."
+    return f"Hello. {content} Will you sell it? Please say yes or no."
 
 SALE_AGAIN = {
     "en": "Please say yes or no.",
@@ -123,10 +126,68 @@ def _forget_sale(phone: str) -> None:
         _PENDING.pop(key, None)
 
 
-def _pending_sale(phone: str, other: str = "") -> dict | None:
-    for key in (normalize_phone(phone), normalize_phone(other)):
+async def _store_sale(memory: Memory | None, phone: str, record: dict) -> None:
+    _remember_sale(phone, record)
+    if memory is None or not memory.ready:
+        return
+    key = normalize_phone(phone)
+    if not key:
+        return
+    trigger = record.get("trigger_id")
+    try:
+        trigger_id = int(trigger) if trigger is not None and str(trigger).isdigit() else None
+    except (TypeError, ValueError):
+        trigger_id = None
+    try:
+        await asyncio.to_thread(
+            memory.save_sale,
+            key,
+            trigger_id=trigger_id,
+            language=str(record.get("language") or "en"),
+            reason=str(record.get("reason") or ""),
+            crop=str(record.get("crop") or "") or None,
+            district=str(record.get("district") or "") or None,
+        )
+    except Exception:
+        logger.exception("could not store the sale call")
+
+
+async def _drop_sale(memory: Memory | None, phone: str) -> None:
+    _forget_sale(phone)
+    if memory is None or not memory.ready:
+        return
+    key = normalize_phone(phone)
+    if not key:
+        return
+    try:
+        await asyncio.to_thread(memory.clear_sale, key)
+    except Exception:
+        logger.exception("could not clear the sale call")
+
+
+async def _pending_sale(memory: Memory | None, phone: str, other: str = "") -> dict | None:
+    keys = [normalize_phone(phone), normalize_phone(other)]
+    for key in keys:
         if key and key in _PENDING:
             return _PENDING[key]
+    if memory is not None and memory.ready:
+        for key in keys:
+            if not key:
+                continue
+            try:
+                found = await asyncio.to_thread(memory.load_sale, key)
+            except Exception:
+                logger.exception("could not load the sale call")
+                found = None
+            if found:
+                return found
+        try:
+            found = await asyncio.to_thread(memory.latest_sale)
+        except Exception:
+            logger.exception("could not load the latest sale call")
+            found = None
+        if found:
+            return found
     if len(_PENDING) == 1:
         return next(iter(_PENDING.values()))
     return None
@@ -206,13 +267,15 @@ class ExotelCall:
         await self.send_audio(pcm, self._turn)
 
     async def greet(self) -> None:
-        pending = _pending_sale(self.phone, self.other_phone)
+        pending = await _pending_sale(self.memory, self.phone, self.other_phone)
         if pending:
             self.confirm = pending
             language = pending.get("language") or "en"
             self.language = language if language in {"en", "hi", "kn"} else "en"
-            await self.speak(SALE_ASK[self.language])
+            logger.info("sale greeting for %s", self.phone or "unknown")
+            await self.speak(sale_opening(self.language, str(pending.get("reason") or "")))
             return
+        logger.info("generic greeting for %s", self.phone or "unknown")
         self.language = "en"
         await self.play_cached(GREETING["en"], "greet-en")
 
@@ -234,9 +297,9 @@ class ExotelCall:
         except Exception:
             logger.exception("desk answer failed")
             return False
-        for key in (normalize_phone(self.phone), normalize_phone(self.other_phone)):
-            if key:
-                _PENDING.pop(key, None)
+        await _drop_sale(self.memory, self.phone)
+        if self.other_phone:
+            await _drop_sale(self.memory, self.other_phone)
         return True
 
     async def reply_to(self, text: str, language_hint: str | None, final: bool = True) -> None:
@@ -772,15 +835,14 @@ async def handle_dial(request: web.Request) -> web.Response:
     language = str(body.get("language") or "en")
     if language not in {"en", "hi", "kn"}:
         language = "en"
-    _remember_sale(
-        caller,
-        {
-            "trigger_id": body.get("trigger_id"),
-            "language": language,
-            "crop": str(body.get("crop") or "maize"),
-            "district": str(body.get("district") or ""),
-        },
-    )
+    record = {
+        "trigger_id": body.get("trigger_id"),
+        "language": language,
+        "reason": str(body.get("reason") or ""),
+        "crop": str(body.get("crop") or "maize"),
+        "district": str(body.get("district") or ""),
+    }
+    await _store_sale(request.app["memory"], caller, record)
     sid = os.environ.get("EXOTEL_ACCOUNT_SID", "")
     key = os.environ.get("EXOTEL_API_KEY", "")
     token = os.environ.get("EXOTEL_API_TOKEN", "")
@@ -788,7 +850,7 @@ async def handle_dial(request: web.Request) -> web.Response:
     exophone = os.environ.get("EXOTEL_EXOPHONE", "")
     flow = os.environ.get("EXOTEL_VOICE_URL", "")
     if not (sid and key and token and exophone and flow):
-        _forget_sale(caller)
+        await _drop_sale(request.app["memory"], caller)
         return web.json_response({"error": "exotel"}, status=503)
     url = f"https://{host}/v1/Accounts/{sid}/Calls/connect.json"
     try:
@@ -802,11 +864,11 @@ async def handle_dial(request: web.Request) -> web.Response:
                 text = await response.text()
                 if response.status >= 400:
                     logger.warning("exotel dial returned %s", response.status)
-                    _forget_sale(caller)
+                    await _drop_sale(request.app["memory"], caller)
                     return web.json_response({"error": text[:180]}, status=502)
     except Exception:
         logger.exception("exotel dial failed")
-        _forget_sale(caller)
+        await _drop_sale(request.app["memory"], caller)
         return web.json_response({"error": "exotel"}, status=502)
     logger.info("dialed %s", caller)
     return web.json_response({"ok": True, "phone": caller})
