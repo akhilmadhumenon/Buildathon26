@@ -31,7 +31,7 @@ from kisan.raitha import live_prices_enabled, speak_board
 from kisan.names import correct_transcript
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
 from kisan.db import CROP_ALIASES, Database, normalize_phone, now_iso
-from kisan.language import SPEECH_PACE, SPEECH_PITCH, detect_language, speech_segments, voice_for
+from kisan.language import SPEECH_PACE, SPEECH_PITCH, SPEECH_TAIL, detect_language, spoken_text, voice_for
 from kisan.summary import render_summary
 
 load_dotenv()
@@ -61,9 +61,9 @@ Prices and crop durations are demo figures.
 """.strip()
 
 GREETING = {
-    "en": "Namaste! How may I help you?",
-    "hi": "नमस्ते! मैं आपकी क्या मदद कर सकती हूँ?",
-    "kn": "ನಮಸ್ಕಾರ! ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?",
+    "en": "Namaste, how can I help?",
+    "hi": "नमस्ते, क्या मदद करूँ?",
+    "kn": "ನಮಸ್ಕಾರ, ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?",
 }
 
 RETRY = {
@@ -197,7 +197,7 @@ class ExotelCall:
         self.turns.append(("assistant", text))
         turn = self._turn
         pcm = await synthesize(text, self.language)
-        pcm += b"\x00" * int(SAMPLE_RATE * 0.45) * 2
+        pcm += b"\x00" * int(SAMPLE_RATE * SPEECH_TAIL) * 2
         if turn == self._turn:
             await self.send_audio(pcm, turn)
 
@@ -508,18 +508,11 @@ async def chat(http: aiohttp.ClientSession | None, messages: list[dict], *, use_
 
 
 async def synthesize(text: str, language: str) -> bytes:
-    segments = speech_segments(text, language)
-    if not segments:
+    line = spoken_text(text, language)
+    if not line:
         return b""
-    pause = b"\x00" * int(SAMPLE_RATE * 0.14) * 2
-    pieces: list[bytes] = []
     async with aiohttp.ClientSession() as session:
-        for index, segment in enumerate(segments):
-            pcm = await _synthesize_segment(session, segment, language)
-            if index:
-                pieces.append(pause)
-            pieces.append(pcm)
-    return b"".join(pieces)
+        return await _synthesize_segment(session, line, language)
 
 
 async def _synthesize_segment(session: aiohttp.ClientSession, text: str, language: str) -> bytes:
@@ -593,7 +586,7 @@ class SpeechOut:
                 },
             }
         )
-        await socket.send_json({"type": "text", "data": {"text": text}})
+        await socket.send_json({"type": "text", "data": {"text": spoken_text(text, language) or text}})
         await socket.send_json({"type": "flush"})
         pending = PcmBuffer()
         while True:
@@ -781,8 +774,10 @@ def build_app() -> web.Application:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    port = int(os.environ.get("EXOTEL_PORT", "8788"))
-    web.run_app(build_app(), host="127.0.0.1", port=port)
+    # Locally ngrok forwards to 127.0.0.1:8788. Railway sets PORT and connects from outside the container.
+    port = int(os.environ.get("PORT") or os.environ.get("EXOTEL_PORT") or "8788")
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    web.run_app(build_app(), host=host, port=port)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-# Companion and conversation personas. A slightly brighter pitch keeps the phone voice cheerful.
+# Companion and conversation personas. Pace 1 and pitch 0 are Bulbul's conversational defaults.
 VOICES = {
     "en": ("en-IN", "aparna_en_companion"),
     "hi": ("hi-IN", "shreya_hi_conversational"),
@@ -12,8 +12,10 @@ VOICES = {
 }
 SPEECH_PACE = 1.0
 SPEECH_PITCH = 0.0
+# Just enough quiet for the last syllable to finish on the phone line.
+SPEECH_TAIL = 0.2
 
-_SENTENCE_BREAK = re.compile(r"(?<=[.!?।])\s+")
+_OPENERS = ("ಹೌದು", "जी हाँ", "जी हां", "Of course", "Certainly", "Yes")
 
 
 def detect_language(text: str, hint: str | None = None, current: str | None = None) -> str:
@@ -61,15 +63,51 @@ def voice_for(language: str) -> tuple[str, str]:
     return VOICES.get(language, VOICES["en"])
 
 
-def speech_segments(text: str, language: str) -> list[str]:
-    """Split a reply into short spoken lines so the voice can breathe."""
-    cleaned = " ".join((text or "").split())
+def spoken_text(text: str, language: str) -> str:
+    """Punctuation Bulbul can speak in one breath, without a shouted or chopped contour.
+
+    A comma is a short breath, a full stop ends a thought, and a question mark
+    lifts the voice. The whole reply stays one clip so the tone can connect.
+    """
+    cleaned = " ".join((text or "").replace("\n", " ").split())
     if not cleaned:
-        return []
+        return ""
+    cleaned = re.sub(r"[\"“”«»]", "", cleaned)
+    cleaned = re.sub(r"[()\[\]{}]", ", ", cleaned)
+    cleaned = re.sub(r"[;:—–]", ", ", cleaned)
+    cleaned = re.sub(r"(?:…|\.{3,})(?=\s|$)", ".", cleaned)
+    cleaned = re.sub(r"(?:…|\.{3,})", ", ", cleaned)
+    cleaned = re.sub(r"!+", ".", cleaned)
+    cleaned = re.sub(r"\?+", "?", cleaned)
+    cleaned = re.sub(r"(?:\.\s*)+\?", "?", cleaned)
+    cleaned = re.sub(r"\?\.+", "?", cleaned)
+    cleaned = re.sub(r"\.{2,}", ".", cleaned)
+    cleaned = re.sub(r"\s+([,.।?])", r"\1", cleaned)
+    cleaned = re.sub(r"([,.।?])\1+", r"\1", cleaned)
+    cleaned = re.sub(r",\s*,+", ", ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
+    if not cleaned:
+        return ""
     if language in {"hi", "kn"}:
         cleaned = re.sub(r"\.(?=\s|$)", "।", cleaned)
-    parts = [part.strip() for part in _SENTENCE_BREAK.split(cleaned) if part.strip()]
-    return parts or [cleaned]
+    cleaned = _without_stock_opener(cleaned)
+    if not cleaned:
+        return ""
+    if cleaned[-1] not in ".।?":
+        cleaned += "।" if language in {"hi", "kn"} else "."
+    return cleaned
+
+
+def _without_stock_opener(text: str) -> str:
+    """Drop a barked Yes or ಹೌದು. The rest of the sentence stays."""
+    for opener in _OPENERS:
+        if text.lower().startswith(opener.lower()):
+            rest = text[len(opener):]
+            if rest and rest[0].isalpha():
+                continue
+            rest = rest.lstrip(" ,!.:;-।")
+            return rest or text
+    return text
 
 
 def _roman_hindi(text: str) -> bool:

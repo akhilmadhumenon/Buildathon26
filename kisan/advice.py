@@ -78,9 +78,9 @@ _TREND_SPOKEN = {
 
 
 GOODBYE = {
-    "en": "Have a nice day!",
-    "hi": "आपका दिन शुभ हो!",
-    "kn": "ಶುಭ ದಿನ!",
+    "en": "Alright, take care.",
+    "hi": "ठीक है, अपना ध्यान रखिए।",
+    "kn": "ಸರಿ, ಜೋಪಾನವಾಗಿರಿ.",
 }
 
 

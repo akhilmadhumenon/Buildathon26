@@ -18,7 +18,7 @@ from kisan.advice import (
     spoken_mandi,
 )
 from kisan.db import Database
-from kisan.language import detect_language, speech_segments, voice_for
+from kisan.language import detect_language, spoken_text, voice_for
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
 from kisan.summary import extract_turns, overlap_score, render_summary
 
@@ -91,9 +91,12 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(voice_for("kn")[0], "kn-IN")
         self.assertEqual(voice_for("hi")[1], "shreya_hi_conversational")
         self.assertNotIn("customer", voice_for("en")[1])
-        segments = speech_segments("नमस्ते. भाव 1,800 है. बारिश नहीं है।", "hi")
-        self.assertEqual(segments[0], "नमस्ते।")
-        self.assertIn("1,800", segments[1])
+        hindi = spoken_text("नमस्ते. भाव 1,800 है. बारिश नहीं है।", "hi")
+        self.assertEqual(hindi, "नमस्ते। भाव 1,800 है। बारिश नहीं है।")
+        self.assertEqual(spoken_text("Namaste! How may I help you?", "en"), "Namaste. How may I help you?")
+        self.assertEqual(spoken_text("Yes! Sell there!", "en"), "Sell there.")
+        self.assertEqual(spoken_text("Yesterday the price fell.", "en"), "Yesterday the price fell.")
+        self.assertEqual(spoken_text("Namaste, how can I help?", "en"), "Namaste, how can I help?")
 
     def test_summary_keeps_the_question_and_the_answer(self) -> None:
         turns = extract_turns(
@@ -197,8 +200,8 @@ class MemoryTests(unittest.TestCase):
             ),
         )
         self.assertIn("1,800", spoken_mandi(self.db, "ಇವತ್ತು ಟೊಮೆಟೊ ಬೆಲೆ ಎಷ್ಟು ಕೋಲಾರ ಮಂಡ್ಯದಲ್ಲಿ?", "kn"))
-        self.assertIn("nice day", spoken_mandi(self.db, "no nothing thank you", "en"))
-        self.assertIn("nice day", spoken_mandi(self.db, "thank you", "en"))
+        self.assertIn("take care", spoken_mandi(self.db, "no nothing thank you", "en"))
+        self.assertIn("take care", spoken_mandi(self.db, "thank you", "en"))
         self.assertEqual(spoken_mandi(self.db, "Hello", "en"), "Yes! Go ahead.")
         self.assertTrue(should_answer("Hello"))
         saved = spoken_mandi(self.db, "Kolar", "en", phone=self.phone)
