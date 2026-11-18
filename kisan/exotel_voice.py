@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from kisan.advice import GOODBYE, _is_closing, _mentioned, should_answer
 from kisan.gemini_reply import gemini_reply
 from kisan.raitha import board_url, snapshots, speak_board
+from kisan.sarvam_reply import sarvam_reply
 from kisan.names import correct_transcript
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
 from kisan.memory import Memory, NO_MEMORY, now_ist
@@ -295,9 +296,12 @@ async def answer_caller(
     turns: list[tuple[str, str]],
     language: str = "en",
 ) -> tuple[str, bool]:
-    """Gemini speaks from the dashboard. If Gemini is down, Sarvam speaks the same board."""
+    """Gemini writes the reply. Sarvam writes it from the same board when Gemini cannot."""
     question = turns[-1][1] if turns and turns[-1][0] == "user" else ""
     heard = await gemini_reply(http, caller, turns)
+    if not heard:
+        logger.info("gemini unavailable, asking sarvam")
+        heard = await sarvam_reply(http, caller, turns)
     if heard:
         say, place, end_call = heard
         if place:
@@ -315,7 +319,7 @@ async def answer_caller(
         return spoken, False
     if _mentioned(question, CROP_ALIASES):
         return MARKET_DOWN.get(language, MARKET_DOWN["en"]), False
-    return "", False
+    return RETRY.get(language, RETRY["en"]), False
 
 
 async def synthesize(text: str, language: str) -> bytes:

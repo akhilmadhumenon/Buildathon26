@@ -214,12 +214,65 @@ def known_place(name: str) -> str:
     return ""
 
 
+_ENGLISH_NUDGE = "\nThe farmer's latest sentence is English. The say field must be English."
+
+
 def _script(text: str) -> str:
     if any("\u0c80" <= char <= "\u0cff" for char in text):
         return "kn"
     if any("\u0900" <= char <= "\u097f" for char in text):
         return "hi"
     return "en"
+
+
+def needs_english(latest: str, say: str) -> bool:
+    return bool(say) and _script(latest) == "en" and _script(say) != "en"
+
+
+async def build_prompt(
+    session: aiohttp.ClientSession,
+    caller: Caller,
+    turns: list[tuple[str, str]],
+) -> tuple[list[tuple[str, str]], str, dict | None]:
+    """Correct the latest sentence, resolve the caller's map point, and fill the shared prompt."""
+    if turns and turns[-1][0] == "user":
+        turns = [*turns[:-1], (turns[-1][0], correct_transcript(turns[-1][1]))]
+    point = await caller_point(session, caller, turns)
+    latest_user = next((text for role, text in reversed(turns) if role == "user"), "")
+    spoken = named_place(latest_user)
+    if point and point.get("lat") is not None and spoken and turns:
+        role, text = turns[-1]
+        if role == "user":
+            turns = [*turns[:-1], (role, re.sub(re.escape(spoken), point["name"], text, count=1, flags=re.I))]
+    places = ", ".join(sorted(set(PLACE_ALIASES.values())))
+    if point and point["name"] not in places:
+        places = places + ", " + point["name"]
+    conversation = "\n".join(f"{role}: {text}" for role, text in turns[-6:]) or "user: "
+    prompt = (
+        _PROMPT.replace("{places}", places)
+        .replace("{facts}", await live_facts(session, caller.phone, point, turns))
+        .replace("{conversation}", conversation)
+        .replace("{memory}", caller.memory.strip() or "No earlier calls are stored for this number.")
+    )
+    return turns, prompt, point
+
+
+def settle_reply(
+    caller: Caller,
+    say: str,
+    place: str,
+    end_call: bool,
+    point: dict | None,
+) -> tuple[str, str, bool] | None:
+    say = _without_stock_opener(say)
+    if not say:
+        return None
+    saved = known_place(place)
+    if point and point.get("from_utterance") and point.get("lat") is not None:
+        saved = point["name"]
+    if saved:
+        caller.place = saved
+    return say, saved, end_call
 
 
 async def gemini_reply(
@@ -236,62 +289,40 @@ async def gemini_reply(
     owns_session = http is None
     session = http or aiohttp.ClientSession()
     try:
-        if turns and turns[-1][0] == "user":
-            turns = [*turns[:-1], (turns[-1][0], correct_transcript(turns[-1][1]))]
-        point = await caller_point(session, caller, turns)
-        latest_user = next((text for role, text in reversed(turns) if role == "user"), "")
-        spoken = named_place(latest_user)
-        if point and point.get("lat") is not None and spoken and turns:
-            role, text = turns[-1]
-            if role == "user":
-                turns = [*turns[:-1], (role, re.sub(re.escape(spoken), point["name"], text, count=1, flags=re.I))]
-        places = ", ".join(sorted(set(PLACE_ALIASES.values())))
-        if point and point["name"] not in places:
-            places = places + ", " + point["name"]
-        conversation = "\n".join(f"{role}: {text}" for role, text in turns[-6:]) or "user: "
-        prompt = (
-            _PROMPT.replace("{places}", places)
-            .replace("{facts}", await live_facts(session, caller.phone, point, turns))
-            .replace("{conversation}", conversation)
-            .replace("{memory}", caller.memory.strip() or "No earlier calls are stored for this number.")
-        )
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.4,
-                "maxOutputTokens": 120,
-                "responseMimeType": "application/json",
-            },
-        }
-        if model.startswith("gemini-3"):
-            payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "minimal"}
+        turns, prompt, point = await build_prompt(session, caller, turns)
+        payload = _gemini_payload(model, prompt)
         raw = await _post_gemini(session, model, key, payload)
         say, place, end_call = parse_gemini_reply(raw or "")
         say = _without_stock_opener(say)
         latest = next((text for role, text in reversed(turns) if role == "user"), "")
-        if say and _script(latest) == "en" and _script(say) != "en":
-            payload["contents"][0]["parts"][0]["text"] = (
-                prompt + "\nThe farmer's latest sentence is English. The say field must be English."
-            )
+        if needs_english(latest, say):
+            payload = _gemini_payload(model, prompt + _ENGLISH_NUDGE)
             raw = await _post_gemini(session, model, key, payload)
             retried, place, end_call = parse_gemini_reply(raw or "")
             retried = _without_stock_opener(retried)
             if retried:
                 say = retried
+        return settle_reply(caller, say, place, end_call, point)
     except Exception:
         logger.exception("gemini failed")
         return None
     finally:
         if owns_session:
             await session.close()
-    if not say:
-        return None
-    saved = known_place(place)
-    if point and point.get("from_utterance") and point.get("lat") is not None:
-        saved = point["name"]
-    if saved:
-        caller.place = saved
-    return say, saved, end_call
+
+
+def _gemini_payload(model: str, prompt: str) -> dict:
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": 120,
+            "responseMimeType": "application/json",
+        },
+    }
+    if model.startswith("gemini-3"):
+        payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "minimal"}
+    return payload
 
 
 async def _post_gemini(

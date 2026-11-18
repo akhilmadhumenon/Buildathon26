@@ -206,6 +206,115 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(detect_language("Mujhe tamatar bechna hai"), "hi")
         raitha._CACHE.clear()
 
+    def test_sarvam_reads_a_chat_reply(self) -> None:
+        from kisan.sarvam_reply import _message_text, chat_payload
+
+        text = _message_text(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"say": "Tomato is 1800 rupees a quintal.", "save_place": "", "end_call": false}'
+                        }
+                    }
+                ]
+            }
+        )
+        self.assertIn("1800", text)
+        payload = chat_payload("sarvam-105b", "Modal 1800 at Kolar.")
+        self.assertEqual(payload["model"], "sarvam-105b")
+        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertEqual(payload["response_format"]["type"], "json_schema")
+        self.assertIn("1800", payload["messages"][1]["content"])
+
+    def test_sarvam_rate_limit_returns_nothing(self) -> None:
+        import asyncio
+
+        from kisan.sarvam_reply import _post_sarvam
+
+        class _Response:
+            def __init__(self, status: int, body: str = "{}") -> None:
+                self.status = status
+                self._body = body
+
+            async def text(self) -> str:
+                return self._body
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args) -> bool:
+                return False
+
+        class _Session:
+            def post(self, *_args, **_kwargs) -> _Response:
+                return _Response(429, '{"error":"rate limit"}')
+
+        text = asyncio.run(_post_sarvam(_Session(), "sarvam-105b", "key", "prompt"))
+        self.assertIsNone(text)
+
+    def test_sarvam_writes_when_gemini_is_down(self) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from kisan.exotel_voice import answer_caller
+        from kisan.reference import Caller
+
+        gemini = AsyncMock(return_value=None)
+        sarvam = AsyncMock(return_value=("Tomato in Kolar is 1800 rupees a quintal.", "Kolar", False))
+        with patch("kisan.exotel_voice.gemini_reply", gemini), patch("kisan.exotel_voice.sarvam_reply", sarvam):
+            say, end_call = asyncio.run(
+                answer_caller(None, Caller(phone="+919800000000"), [("user", "what is the tomato price")], "en")
+            )
+        self.assertIn("1800", say)
+        self.assertFalse(end_call)
+        gemini.assert_awaited()
+        sarvam.assert_awaited()
+
+    def test_gemini_answers_before_sarvam(self) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from kisan.exotel_voice import answer_caller
+        from kisan.reference import Caller
+
+        gemini = AsyncMock(return_value=("Onion is 900 rupees a quintal.", "", False))
+        sarvam = AsyncMock(return_value=("should not speak", "", False))
+        with patch("kisan.exotel_voice.gemini_reply", gemini), patch("kisan.exotel_voice.sarvam_reply", sarvam):
+            say, end_call = asyncio.run(
+                answer_caller(None, Caller(), [("user", "onion price")], "en")
+            )
+        self.assertIn("900", say)
+        self.assertFalse(end_call)
+        sarvam.assert_not_awaited()
+
+    def test_both_models_down_still_speaks_and_keeps_the_call(self) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from kisan import raitha
+        from kisan.exotel_voice import RETRY, answer_caller
+        from kisan.reference import Caller
+
+        raitha._CACHE[:] = [
+            {"crop": "maize", "district": "Davangere", "modal": 3236, "shortage": True},
+        ]
+        down = AsyncMock(return_value=None)
+        try:
+            with patch("kisan.exotel_voice.gemini_reply", down), patch("kisan.exotel_voice.sarvam_reply", down):
+                price, end_price = asyncio.run(
+                    answer_caller(None, Caller(), [("user", "what is the maize price")], "en")
+                )
+                retry, end_retry = asyncio.run(
+                    answer_caller(None, Caller(), [("user", "hello there")], "en")
+                )
+        finally:
+            raitha._CACHE.clear()
+        self.assertIn("3236", price)
+        self.assertFalse(end_price)
+        self.assertEqual(retry, RETRY["en"])
+        self.assertFalse(end_retry)
+
 
 if __name__ == "__main__":
     unittest.main()
