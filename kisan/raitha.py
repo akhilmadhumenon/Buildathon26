@@ -1,4 +1,4 @@
-"""Live mandi prices from the RaithaLine board. Caller memory stays in SQLite."""
+"""Live mandi prices from the RaithaLine dashboard. There is no local price store."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import time
 
 import aiohttp
 
-from kisan.advice import _km_between, _mentioned, format_caller_context
-from kisan.db import CROP_ALIASES, DISTRICT_COORDS, KEEPING, Database
+from kisan.advice import _km_between, _mentioned
+from kisan.reference import CROP_ALIASES, DISTRICT_COORDS, KEEPING
 
 logger = logging.getLogger("kisan.exotel")
 
@@ -32,26 +32,24 @@ _CACHE_AT = 0.0
 _TTL_SECONDS = 600
 
 
-def live_prices_enabled() -> bool:
-    return bool(_base_url())
+def board_url() -> str:
+    return _base_url()
 
 
 def _base_url() -> str:
-    return os.environ.get("RAITHA_API_URL", DEFAULT_URL).strip().rstrip("/")
+    raw = os.environ.get("RAITHA_API_URL")
+    if raw is None:
+        return DEFAULT_URL
+    return raw.strip().rstrip("/") or DEFAULT_URL
 
 
 async def live_facts(
     session: aiohttp.ClientSession,
-    db: Database,
     phone: str,
     caller_point: dict | None,
     turns: list[tuple[str, str]],
 ) -> str:
-    """Price facts for the spoken reply. An empty URL keeps the local demo prices."""
-    if not _base_url():
-        from kisan.advice import market_facts
-
-        return market_facts(db, phone, caller_point)
+    """Price facts for the spoken reply. The dashboard is the only price source."""
     asked = _crops_in_turns(turns)
     try:
         boards = await snapshots(session)
@@ -60,11 +58,11 @@ async def live_facts(
         boards = []
     if not boards:
         return (
-            format_caller_context(db, phone)
-            + "\nMarket prices could not be loaded. Ask them to say the question once more. "
+            f"Caller phone: {phone or 'unknown'}.\n"
+            "Market prices could not be loaded. Ask them to say the question once more. "
             "Do not invent a price."
         )
-    return format_market_facts(boards, db, phone, caller_point, asked)
+    return format_market_facts(boards, phone, caller_point, asked)
 
 
 async def snapshots(session: aiohttp.ClientSession) -> list[dict]:
@@ -125,7 +123,6 @@ async def _one(session: aiohttp.ClientSession, crop: str, timeout: aiohttp.Clien
 
 def format_market_facts(
     boards: list[dict],
-    db: Database,
     phone: str,
     caller_point: dict | None,
     focus: list[str] | None = None,
@@ -133,7 +130,7 @@ def format_market_facts(
     """A short price sheet. The model speaks only the part the caller asked about."""
     focus = focus or []
     lines = [
-        format_caller_context(db, phone),
+        f"Caller phone: {phone or 'unknown'}.",
         "Prices are rupees per quintal from the mandi report. Modal is the usual price. "
         "Min and max are the grade range. A 7-day figure is a prediction. "
         "Shortage yes means this mandi has less supply than usual. "

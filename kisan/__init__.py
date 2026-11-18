@@ -1,1 +1,1 @@
-"""Voice agent for farmer calls: mandi prices, harvest advice, and call memory."""
+"""Voice agent for farmer calls. Mandi prices come from the RaithaLine dashboard. Caller memory is in Postgres."""

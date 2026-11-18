@@ -14,25 +14,14 @@ import aiohttp
 from aiohttp import web
 from dotenv import load_dotenv
 
-from kisan.advice import (
-    GOODBYE,
-    facts_for_question,
-    format_caller_context,
-    harvest_answer,
-    mandi_answer,
-    related_calls,
-    _is_closing,
-    _mentioned,
-    should_answer,
-    spoken_mandi,
-)
+from kisan.advice import GOODBYE, _is_closing, _mentioned, should_answer
 from kisan.gemini_reply import gemini_reply
-from kisan.raitha import live_prices_enabled, speak_board
+from kisan.raitha import board_url, snapshots, speak_board
 from kisan.names import correct_transcript
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
-from kisan.db import CROP_ALIASES, Database, normalize_phone, now_iso
+from kisan.memory import Memory, NO_MEMORY, now_ist
+from kisan.reference import CROP_ALIASES, Caller, normalize_phone
 from kisan.language import SPEECH_PACE, SPEECH_PITCH, SPEECH_TAIL, detect_language, spoken_text, voice_for
-from kisan.summary import render_summary
 
 load_dotenv()
 
@@ -42,23 +31,6 @@ SAMPLE_RATE = 8000
 SARVAM_STT_URL = "wss://api.sarvam.ai/speech-to-text-realtime/ws"
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 SARVAM_TTS_WS = "wss://api.sarvam.ai/text-to-speech/ws?model=bulbul:v4-flash&send_completion_event=true"
-SARVAM_CHAT_URL = "https://api.sarvam.ai/v2/chat/completions"
-
-INSTRUCTIONS = """
-You are Kisan Sahayak, a phone helper for farmers in Karnataka.
-Answer in the caller's latest language, in the words that fit the question.
-Never use lists, markdown, or symbols. In Hindi and Kannada, write in that script.
-The caller may speak Kannada, Hindi, or English, and may switch during the call.
-Answer in the language of the caller's latest sentence.
-If a fact is included for this turn, say that fact and do not call a tool.
-Otherwise use tools for prices and harvest advice. Do not invent a price.
-Earlier calls are notes only. Mention one only when this question is about the same crop and the same place or harvest. If it is a different question, ignore the notes and do not say that you remember.
-If a harvest question is missing the district, crop, or sowing date, ask for the missing piece kindly.
-When the caller gives a district, crop, or sowing date, save it with save_farmer_profile.
-Prices and crop durations are demo figures.
-
-{context}
-""".strip()
 
 GREETING = {
     "en": "Namaste, how can I help?",
@@ -78,80 +50,20 @@ MARKET_DOWN = {
     "kn": "ಮಂಡಿ ಬೆಲೆ ಈಗ ಸಿಗಲಿಲ್ಲ. ಇನ್ನೊಮ್ಮೆ ಕೇಳಿ.",
 }
 
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_mandi_price",
-            "description": "Look up the latest mandi price and recent change for a crop.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "crop": {"type": "string"},
-                    "mandi": {"type": "string", "description": "Mandi or district, such as Kolar or Mandya."},
-                },
-                "required": ["crop", "mandi"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_harvest_advice",
-            "description": "Say whether a crop is ready to harvest from the sowing date, crop calendar, and rain.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "crop": {"type": "string"},
-                    "district": {"type": "string"},
-                    "sown_on": {"type": "string", "description": "Sowing date as YYYY-MM-DD."},
-                },
-                "required": ["crop", "district", "sown_on"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "save_farmer_profile",
-            "description": "Store the farmer district, crop, or sowing date against this phone number.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "district": {"type": "string"},
-                    "crop": {"type": "string"},
-                    "sown_on": {"type": "string"},
-                    "name": {"type": "string"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "recall_previous_calls",
-            "description": "Find earlier calls from this phone number that match the question.",
-            "parameters": {
-                "type": "object",
-                "properties": {"question": {"type": "string"}},
-                "required": ["question"],
-            },
-        },
-    },
-]
-
 
 class ExotelCall:
-    def __init__(self, socket: web.WebSocketResponse, db: Database) -> None:
+    def __init__(self, socket: web.WebSocketResponse) -> None:
         self.socket = socket
-        self.db = db
+        self.caller = Caller()
+        self.memory: Memory | None = None
+        self.started_at = now_ist()
+        self._saved_place = ""
+        self._stored = False
         self.phone = ""
         self.call_sid = ""
-        self._saved = False
         self._ending = False
         self.stream_sid = ""
         self.language = "en"
-        self.started_at = now_iso()
         self.turns: list[tuple[str, str]] = []
         self._turn = 0
         self._ignore_until = 0.0
@@ -211,8 +123,6 @@ class ExotelCall:
 
     async def greet(self) -> None:
         self.language = "en"
-        if self.phone:
-            self.db.save_farmer(self.phone)
         await self.play_cached(GREETING["en"], "greet-en")
 
     async def reply_to(self, text: str, language_hint: str | None) -> None:
@@ -221,13 +131,14 @@ class ExotelCall:
         logger.info("language %s", self.language)
         self.turns.append(("user", text))
         try:
-            answer, end_call = await answer_caller(self.http, self.db, self.phone, self.turns, self.language)
+            answer, end_call = await answer_caller(self.http, self.caller, self.turns, self.language)
         except asyncio.TimeoutError:
             logger.warning("chat timed out for %s", self.phone)
             answer, end_call = RETRY.get(self.language, RETRY["en"]), False
         except Exception:
             logger.exception("reply failed")
             answer, end_call = RETRY.get(self.language, RETRY["en"]), False
+        self._remember_place()
         if not answer:
             logger.info("no answer for %s", text[:80])
             return
@@ -236,6 +147,23 @@ class ExotelCall:
         await self.speak(answer)
         if end_call or answer in GOODBYE.values():
             await self.end_call()
+
+    def _remember_place(self) -> None:
+        place = self.caller.place
+        memory = self.memory
+        if not place or place == self._saved_place or memory is None or not memory.ready or not self.phone:
+            return
+        self._saved_place = place
+        asyncio.create_task(self._save_place(place))
+
+    async def _save_place(self, place: str) -> None:
+        memory = self.memory
+        if memory is None:
+            return
+        try:
+            await asyncio.to_thread(memory.save_farmer, self.phone, district=place)
+        except Exception:
+            logger.exception("could not save caller place")
 
     def _cancel_task(self, task: asyncio.Task[None] | None) -> None:
         if task and not task.done():
@@ -337,24 +265,6 @@ class ExotelCall:
         if not self.socket.closed:
             await self.socket.close()
 
-    def save(self) -> None:
-        if self._saved:
-            return
-        if not self.phone:
-            logger.warning("call ended without a caller number; summary not stored")
-            return
-        summary, questions, answers = render_summary(self.turns)
-        call_id = self.db.append_call(
-            self.phone,
-            summary=summary,
-            questions=questions,
-            answers=answers,
-            language=self.language,
-            started_at=self.started_at,
-        )
-        logger.info("saved exotel call %s for %s", call_id, self.phone)
-        self._saved = True
-
 
 async def _hangup_exotel(call_sid: str) -> None:
     """Ask Exotel to drop the line after goodbye, so the minute stops billing."""
@@ -379,132 +289,33 @@ async def _hangup_exotel(call_sid: str) -> None:
         logger.exception("exotel hangup failed")
 
 
-def run_tool(db: Database, phone: str, name: str, arguments: dict) -> str:
-    if name == "get_mandi_price":
-        return mandi_answer(db, str(arguments.get("crop") or ""), str(arguments.get("mandi") or ""))
-    if name == "get_harvest_advice":
-        crop = str(arguments.get("crop") or "")
-        district = str(arguments.get("district") or "")
-        sown_on = str(arguments.get("sown_on") or "")
-        if phone:
-            db.save_farmer(phone, crop=crop or None, district=district or None, sown_on=sown_on or None)
-        return harvest_answer(db, crop=crop, district=district, sown_on=sown_on)
-    if name == "save_farmer_profile":
-        record = db.save_farmer(
-            phone,
-            name=str(arguments.get("name") or "") or None,
-            district=str(arguments.get("district") or "") or None,
-            crop=str(arguments.get("crop") or "") or None,
-            sown_on=str(arguments.get("sown_on") or "") or None,
-        )
-        return (
-            f"Saved district {record.get('district') or 'unknown'}, "
-            f"crop {record.get('crop') or 'unknown'}, sown on {record.get('sown_on') or 'unknown'}."
-        )
-    if name == "recall_previous_calls":
-        return related_calls(db, phone, str(arguments.get("question") or ""))
-    return "That tool is not available."
-
-
 async def answer_caller(
     http: aiohttp.ClientSession | None,
-    db: Database,
-    phone: str,
+    caller: Caller,
     turns: list[tuple[str, str]],
     language: str = "en",
 ) -> tuple[str, bool]:
+    """Gemini speaks from the dashboard. If Gemini is down, Sarvam speaks the same board."""
     question = turns[-1][1] if turns and turns[-1][0] == "user" else ""
-    earlier = [text for role, text in turns[:-1] if role == "user"]
-    heard = await gemini_reply(http, db, phone, turns)
+    heard = await gemini_reply(http, caller, turns)
     if heard:
         say, place, end_call = heard
-        if phone and place:
-            db.save_farmer(phone, district=place)
+        if place:
+            caller.place = place
         return say, end_call
-    if live_prices_enabled():
-        if _is_closing(question):
-            return GOODBYE.get(language, GOODBYE["en"]), True
-        spoken = speak_board(question, language)
-        if spoken:
-            return spoken, False
-        if _mentioned(question, CROP_ALIASES):
-            return MARKET_DOWN.get(language, MARKET_DOWN["en"]), False
-        return "", False
-    quick = spoken_mandi(db, question, language, phone, earlier)
-    if quick:
-        return quick, quick in GOODBYE.values()
-    facts = facts_for_question(db, question)
-    system = INSTRUCTIONS.format(context=format_caller_context(db, phone))
-    if facts:
-        system += (
-            "\n\nFact for this turn. Say it in the caller's language, in one short sentence. "
-            f"Do not call a tool.\n{facts}"
-        )
-    messages: list[dict] = [{"role": "system", "content": system}]
-    for role, text in turns:
-        messages.append({"role": role, "content": text})
-    for _ in range(2):
-        message = await chat(http, messages, use_tools=not facts)
-        tool_calls = message.get("tool_calls") or []
-        content = str(message.get("content") or "").strip()
-        if not tool_calls:
-            text = content or "I could not look that up. Please say the crop and the mandi again."
-            return text, text in GOODBYE.values()
-        if facts:
-            text = content or facts
-            return text, text in GOODBYE.values()
-        messages.append(message)
-        for call in tool_calls:
-            function = call.get("function") or {}
-            name = function.get("name") or ""
-            raw_arguments = function.get("arguments") or "{}"
-            if isinstance(raw_arguments, str):
-                try:
-                    arguments = json.loads(raw_arguments)
-                except json.JSONDecodeError:
-                    arguments = {}
-            else:
-                arguments = raw_arguments
-            result = run_tool(db, phone, name, arguments if isinstance(arguments, dict) else {})
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call.get("id") or name,
-                    "content": result,
-                }
-            )
-    return "Please say that once more.", False
-
-
-async def chat(http: aiohttp.ClientSession | None, messages: list[dict], *, use_tools: bool) -> dict:
-    payload: dict = {
-        "model": os.environ.get("SARVAM_LLM_MODEL", "sarvam-105b"),
-        "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 120,
-    }
-    if use_tools:
-        payload["tools"] = TOOLS
-        payload["tool_choice"] = "auto"
-    owns_session = http is None
-    session = http or aiohttp.ClientSession()
-    try:
-        async with session.post(
-            SARVAM_CHAT_URL,
-            json=payload,
-            headers=_sarvam_headers(),
-            timeout=aiohttp.ClientTimeout(total=2.5),
-        ) as response:
-            body = await response.text()
-            if response.status >= 400:
-                raise RuntimeError(f"Sarvam chat failed ({response.status}): {body[:300]}")
-            data = json.loads(body)
-    finally:
-        if owns_session:
-            await session.close()
-    choice = (data.get("choices") or [{}])[0]
-    message = choice.get("message") or {}
-    return message
+    if _is_closing(question):
+        return GOODBYE.get(language, GOODBYE["en"]), True
+    if http is not None:
+        try:
+            await snapshots(http)
+        except Exception:
+            logger.exception("raitha board failed")
+    spoken = speak_board(question, language)
+    if spoken:
+        return spoken, False
+    if _mentioned(question, CROP_ALIASES):
+        return MARKET_DOWN.get(language, MARKET_DOWN["en"]), False
+    return "", False
 
 
 async def synthesize(text: str, language: str) -> bytes:
@@ -686,10 +497,10 @@ async def _pump_caller_audio(call: ExotelCall, incoming: asyncio.Queue[bytes | N
 async def handle_media(request: web.Request) -> web.WebSocketResponse:
     socket = web.WebSocketResponse()
     await socket.prepare(request)
-    db: Database = request.app["db"]
-    call = ExotelCall(socket, db)
+    call = ExotelCall(socket)
     call.http = request.app["http"]
     call.cached = request.app["cached"]
+    call.memory = request.app["memory"]
     call.speech = SpeechOut()
     asyncio.create_task(call.speech.connect())
     incoming: asyncio.Queue[bytes | None] = asyncio.Queue()
@@ -709,7 +520,10 @@ async def handle_media(request: web.Request) -> web.WebSocketResponse:
                 call.stream_sid = str(start.get("stream_sid") or event.get("stream_sid") or "")
                 call.call_sid = str(start.get("call_sid") or "")
                 call.phone = normalize_phone(str(start.get("from") or ""))
+                call.caller.phone = call.phone
+                call.started_at = now_ist()
                 logger.info("exotel call from %s", call.phone or "unknown")
+                await _load_memory(call)
                 if not greeted:
                     greeted = True
                     asyncio.create_task(call.greet())
@@ -721,11 +535,11 @@ async def handle_media(request: web.Request) -> web.WebSocketResponse:
                 break
     finally:
         call._cancel_reply()
+        await _store_call(call)
         await incoming.put(None)
         pump.cancel()
         if call.speech is not None:
             await call.speech.close()
-        call.save()
         if not socket.closed:
             await socket.close()
     return socket
@@ -738,7 +552,46 @@ async def handle_voicebot(request: web.Request) -> web.Response:
     return web.json_response({"url": f"{ws_scheme}://{host}/exotel/media"})
 
 
+async def _load_memory(call: ExotelCall) -> None:
+    memory = call.memory
+    if memory is None or not memory.ready or not call.phone:
+        if not call.caller.memory:
+            call.caller.memory = NO_MEMORY
+        return
+    try:
+        await asyncio.to_thread(memory.load, call.caller)
+    except Exception:
+        logger.exception("could not load caller memory")
+        call.caller.memory = NO_MEMORY
+        return
+    call._saved_place = call.caller.place
+
+
+async def _store_call(call: ExotelCall) -> None:
+    if call._stored:
+        return
+    call._stored = True
+    memory = call.memory
+    if memory is None or not memory.ready or not call.phone:
+        return
+    try:
+        await asyncio.to_thread(
+            memory.finish_call,
+            call.caller,
+            list(call.turns),
+            call.language,
+            call.started_at,
+        )
+    except Exception:
+        logger.exception("could not store caller memory")
+
+
 async def _open_clients(app: web.Application) -> None:
+    logger.info("mandi prices from %s", board_url())
+    try:
+        await asyncio.to_thread(app["memory"].init)
+    except Exception:
+        logger.exception("caller memory unavailable")
     app["http"] = aiohttp.ClientSession()
     cached: dict[str, bytes] = {}
     lines = {"greet-en": GREETING["en"]}
@@ -759,10 +612,8 @@ async def _close_clients(app: web.Application) -> None:
 
 
 def build_app() -> web.Application:
-    db = Database()
-    db.seed_if_empty()
     app = web.Application()
-    app["db"] = db
+    app["memory"] = Memory()
     app["cached"] = {}
     app.on_startup.append(_open_clients)
     app.on_cleanup.append(_close_clients)

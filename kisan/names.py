@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from kisan.db import CROP_ALIASES, PLACE_ALIASES
+from kisan.reference import CROP_ALIASES, PLACE_ALIASES
 
 _EXTRA = {
     "mandi": "mandi",

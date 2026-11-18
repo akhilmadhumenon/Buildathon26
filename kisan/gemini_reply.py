@@ -10,7 +10,7 @@ import re
 import aiohttp
 
 from kisan.raitha import live_facts
-from kisan.db import DISTRICT_COORDS, PLACE_ALIASES, Database, canonical_place
+from kisan.reference import DISTRICT_COORDS, PLACE_ALIASES, Caller, canonical_place
 from kisan.maps import caller_point, named_place
 from kisan.names import correct_transcript
 
@@ -122,12 +122,13 @@ Keep recommendations concise and practical.
 
 8. Conversation memory
 
-Use the supplied conversation history and caller facts to maintain continuity.
+Use the supplied conversation history, the earlier-calls block, and caller facts to maintain continuity.
+The conversation history is only this call. Earlier calls are in the earlier-calls block.
 Remember relevant details such as the farmer's district, crop, preferred mandi, harvest quantity, and expected harvest date.
 Do not ask for information the farmer has already provided.
 Use previous details only when relevant to the current question.
 If the farmer corrects an earlier detail, use the latest correction.
-Do not treat an old forecast as a current actual price.
+Do not treat an old forecast or a price from an earlier call as today's mandi price.
 Do not claim to remember something that is not present in the supplied context.
 
 9. Handling ambiguity and missing information
@@ -160,6 +161,10 @@ Never return an empty spoken response.
 The following are the only authoritative facts available for this response:
 
 {facts}
+
+Earlier calls for this number. Use the place, crop, and what was already answered. A price here is from an earlier call, not today's mandi price.
+
+{memory}
 
 The following is the conversation history:
 
@@ -219,11 +224,10 @@ def _script(text: str) -> str:
 
 async def gemini_reply(
     http: aiohttp.ClientSession | None,
-    db: Database,
-    phone: str,
+    caller: Caller,
     turns: list[tuple[str, str]],
 ) -> tuple[str, str, bool] | None:
-    """A spoken line, a place to save, and whether to hang up. None if Gemini is unavailable."""
+    """A spoken line, a place to remember, and whether to hang up. None if Gemini is unavailable."""
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         logger.info("gemini skipped, no API key")
@@ -234,7 +238,7 @@ async def gemini_reply(
     try:
         if turns and turns[-1][0] == "user":
             turns = [*turns[:-1], (turns[-1][0], correct_transcript(turns[-1][1]))]
-        point = await caller_point(session, db, phone, turns)
+        point = await caller_point(session, caller, turns)
         latest_user = next((text for role, text in reversed(turns) if role == "user"), "")
         spoken = named_place(latest_user)
         if point and point.get("lat") is not None and spoken and turns:
@@ -247,8 +251,9 @@ async def gemini_reply(
         conversation = "\n".join(f"{role}: {text}" for role, text in turns[-6:]) or "user: "
         prompt = (
             _PROMPT.replace("{places}", places)
-            .replace("{facts}", await live_facts(session, db, phone, point, turns))
+            .replace("{facts}", await live_facts(session, caller.phone, point, turns))
             .replace("{conversation}", conversation)
+            .replace("{memory}", caller.memory.strip() or "No earlier calls are stored for this number.")
         )
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -284,6 +289,8 @@ async def gemini_reply(
     saved = known_place(place)
     if point and point.get("from_utterance") and point.get("lat") is not None:
         saved = point["name"]
+    if saved:
+        caller.place = saved
     return say, saved, end_call
 
 

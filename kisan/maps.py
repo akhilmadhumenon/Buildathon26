@@ -6,7 +6,7 @@ import re
 
 import aiohttp
 
-from kisan.db import CROP_ALIASES, DISTRICT_COORDS, PLACE_ALIASES, Database, canonical_place
+from kisan.reference import CROP_ALIASES, DISTRICT_COORDS, PLACE_ALIASES, Caller, canonical_place
 from kisan.names import skeleton
 
 GEOCODE_URL = "https://nominatim.openstreetmap.org/search"
@@ -71,21 +71,19 @@ async def locate(session: aiohttp.ClientSession, query: str) -> dict | None:
 
 async def caller_point(
     session: aiohttp.ClientSession,
-    db: Database,
-    phone: str,
+    caller: Caller,
     turns: list[tuple[str, str]],
 ) -> dict | None:
-    """Where the farmer is, from this sentence or from the place saved earlier."""
+    """Where the farmer is, from this sentence or from the place named earlier on this call."""
     latest = next((text for role, text in reversed(turns) if role == "user"), "")
     spoken = named_place(latest)
     if spoken:
         point = await locate(session, spoken)
         if point:
+            caller.place = point["name"]
             return {**point, "from_utterance": True}
         return {"name": spoken, "lat": None, "lon": None, "from_utterance": True}
-    stored = ""
-    if phone:
-        stored = str((db.get_farmer(phone) or {}).get("district") or "")
+    stored = caller.place
     if not stored or len(stored) < 4:
         return None
     point = await locate(session, stored)

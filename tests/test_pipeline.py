@@ -1,87 +1,20 @@
-"""The memory loop the phone agent uses: first call writes a summary, the next call reads it."""
+"""Speech, summary, and dashboard price formatting. Prices are not stored locally."""
 
 from __future__ import annotations
 
+import importlib.util
 import os
-import tempfile
 import unittest
-from datetime import date
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from kisan.advice import (
-    facts_for_question,
-    format_caller_context,
-    harvest_answer,
-    mandi_answer,
-    related_calls,
-    should_answer,
-    spoken_mandi,
-)
-from kisan.db import Database
+from kisan.advice import _is_closing, should_answer
 from kisan.language import detect_language, spoken_text, voice_for
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
 from kisan.summary import extract_turns, overlap_score, render_summary
 
 
-class MemoryTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self._dir = tempfile.TemporaryDirectory()
-        self.db = Database(os.path.join(self._dir.name, "kisan.db"))
-        self.db.seed_if_empty()
-        self.phone = "+919812345678"
-
-    def tearDown(self) -> None:
-        self._dir.cleanup()
-
-    def test_second_call_sees_the_first_summary(self) -> None:
-        first = format_caller_context(self.db, self.phone)
-        self.assertIn("first call", first)
-
-        self.db.append_call(
-            self.phone,
-            summary="Farmer asked: tomato price in Kolar. Agent answered: 1800 rupees per quintal, trend down.",
-            questions="what is the tomato price in Kolar",
-            answers="1800 rupees per quintal and the price is falling",
-            language="en",
-            started_at="2026-11-17T10:00:00+05:30",
-        )
-        second = format_caller_context(self.db, self.phone)
-        self.assertIn("1800 rupees", second)
-        self.assertIn(self.phone, second)
-
-        recalled = related_calls(self.db, self.phone, "tomato price in Kolar again")
-        self.assertIn("1800 rupees", recalled)
-        self.assertIn("Closest earlier call", recalled)
-
-    def test_another_number_does_not_see_the_summary(self) -> None:
-        self.db.append_call(
-            self.phone,
-            summary="private note",
-            questions="tomato",
-            answers="1800",
-            language="hi",
-            started_at="2026-11-17T10:00:00+05:30",
-        )
-        other = format_caller_context(self.db, "+919800000001")
-        self.assertIn("first call", other)
-        self.assertNotIn("private note", other)
-
-    def test_mandi_and_harvest_come_from_the_database(self) -> None:
-        price = mandi_answer(self.db, "tomatoes", "kolar")
-        self.assertIn("1800 rupees per quintal", price)
-        self.assertIn("down", price)
-
-        advice = harvest_answer(
-            self.db,
-            crop="ragi",
-            district="Mandya",
-            sown_on="2026-08-01",
-            today=date(2026, 11, 17),
-            weather_lookup=lambda district: "No heavy rain is expected.",
-        )
-        self.assertIn("too early", advice)
-        self.assertIn("No heavy rain", advice)
-
+class PipelineTests(unittest.TestCase):
     def test_language_switch_picks_the_kannada_voice(self) -> None:
         self.assertEqual(detect_language("ಬೆಲೆ ಎಷ್ಟು"), "kn")
         self.assertEqual(detect_language("मंडी का भाव"), "hi")
@@ -122,114 +55,64 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(buffer.push(b"\x00" * (CHUNK_BYTES + 10)), [b"\x00" * CHUNK_BYTES])
         self.assertEqual(len(buffer.finish()[0]), CHUNK_BYTES)
 
-    def test_named_crop_and_mandi_skip_a_tool_round(self) -> None:
-        fact = facts_for_question(self.db, "What is the tomato price in Kolar?")
-        self.assertIn("1800", fact)
-        hindi = facts_for_question(self.db, "कोलार में टमाटर का भाव क्या है")
-        self.assertIn("1800", hindi)
-        self.assertIn("1,800", spoken_mandi(self.db, "tomato price in Kolar", "en"))
-        rice = spoken_mandi(
-            self.db,
-            "Is it a right time to sell my rice harvest in Kolar mandi?",
-            "en",
-        )
-        self.assertIn("2,320", rice)
-        self.assertIn("2,530", rice)
-        self.assertIn("Gangavathi", rice)
-        self.assertIn("Wait a week", rice)
-        tomato = spoken_mandi(self.db, "Should I sell my tomato in Kolar now, or wait a week?", "en")
-        self.assertIn("1,800", tomato)
-        self.assertIn("1,100", tomato)
-        self.assertIn("Sell at Kolar now", tomato)
-        banana = spoken_mandi(
-            self.db,
-            "Should I sell my banana in Huskur now, or wait a week?",
-            "en",
-        )
-        self.assertIn("1,800", banana)
-        self.assertIn("Sell at Huskur now", banana)
-        self.assertNotIn("Wait a week", banana)
-        with self.db.session() as conn:
-            conn.execute(
-                """
-                INSERT INTO mandi_prices
-                    (crop, mandi, district, price_per_quintal, recorded_on, trend)
-                VALUES ('tomato', 'Bengaluru', 'Bengaluru', 2500, '2026-11-17', 'up')
-                """
-            )
-        nearer = spoken_mandi(self.db, "Should I sell my tomato in Kolar now, or wait a week?", "en")
-        self.assertIn("2,500", nearer)
-        self.assertIn("Sell at Bengaluru now", nearer)
-        price = spoken_mandi(self.db, "What is the tomato price in Kolar?", "en", phone="+919800000001")
-        self.assertIn("1,800", price)
-        self.assertNotIn("calling from", price)
-        sale = spoken_mandi(
-            self.db,
-            "Should I sell my rice harvest?",
-            "en",
-            phone="+919800000002",
-        )
-        self.assertIn("calling from", sale)
-        self.assertNotIn("2,320", sale)
-        followed = spoken_mandi(
-            self.db,
-            "Kolar",
-            "en",
-            phone="+919800000002",
-            earlier=["Should I sell my rice harvest?"],
-        )
-        self.assertIn("Gangavathi", followed)
-        self.assertIn("2,320", followed)
-        self.assertEqual(self.db.get_farmer("+919800000002")["district"], "Kolar")
-        kannada_sale = spoken_mandi(self.db, "ನಾನು ಭತ್ತ ಮಾರಾಟ ಮಾಡಬೇಕೇ?", "kn", phone="+919800000003")
-        self.assertIn("ಎಲ್ಲಿಂದ", kannada_sale)
-        kannada = spoken_mandi(self.db, "ಇವತ್ತು ಟೊಮೆಟೊ ಪ್ರೈಸ್ ಎಷ್ಟು ಕೋಲಾರ ಮಂಡಿಯಲ್ಲಿ?", "kn")
-        self.assertIn("1,800", kannada)
-        self.assertIn("ಹೌದು", kannada)
-        self.assertEqual(spoken_mandi(self.db, "What is the price of tomato today?", "en"), "Of course! Which mandi?")
-        self.assertIn("टमाटर", spoken_mandi(self.db, "कोलार में टमाटर का भाव", "hi"))
-        self.assertIn("2,450", spoken_mandi(self.db, "onion", "en", earlier=["tomato price in Kolar"]))
-        self.assertIn("2,450", spoken_mandi(self.db, "kolar", "en", earlier=["tomato price in Kolar", "onion"]))
-        self.assertIn(
-            "2,450",
-            spoken_mandi(
-                self.db,
-                "onion",
-                "kn",
-                earlier=["ಇವತ್ತು ಟೊಮೆಟೊ ಬೆಲೆ ಎಷ್ಟು ಕೋಲಾರ ಮಂಡ್ಯದಲ್ಲಿ?"],
-            ),
-        )
-        self.assertIn("1,800", spoken_mandi(self.db, "ಇವತ್ತು ಟೊಮೆಟೊ ಬೆಲೆ ಎಷ್ಟು ಕೋಲಾರ ಮಂಡ್ಯದಲ್ಲಿ?", "kn"))
-        self.assertIn("take care", spoken_mandi(self.db, "no nothing thank you", "en"))
-        self.assertIn("take care", spoken_mandi(self.db, "thank you", "en"))
-        self.assertEqual(spoken_mandi(self.db, "Hello", "en"), "Yes! Go ahead.")
+    def test_closing_and_noise(self) -> None:
+        self.assertTrue(_is_closing("no nothing thank you"))
+        self.assertTrue(_is_closing("thank you"))
+        self.assertFalse(_is_closing("What is the tomato price in Kolar?"))
         self.assertTrue(should_answer("Hello"))
-        saved = spoken_mandi(self.db, "Kolar", "en", phone=self.phone)
-        self.assertIn("saved", saved)
-        self.assertEqual(self.db.get_farmer(self.phone)["district"], "Kolar")
-        nearest = spoken_mandi(self.db, "Which is the nearest mandi to me?", "en", phone=self.phone)
-        self.assertIn("Kolar", nearest)
-        self.assertIn("1,800", nearest)
-        self.db.save_farmer(self.phone, district="Hassan")
-        deal = spoken_mandi(self.db, "Where is the best price for onion?", "en", phone=self.phone)
-        self.assertIn("Hubballi", deal)
-        self.assertIn("2,450", deal)
+        self.assertFalse(should_answer("uh"))
 
-    def test_gemini_sees_prices_and_writes_the_line(self) -> None:
-        from kisan.advice import market_facts
+    def test_gemini_parse_keeps_the_spoken_line(self) -> None:
         from kisan.gemini_reply import known_place, parse_gemini_reply
 
-        facts = market_facts(self.db, "")
-        self.assertIn("1800", facts)
-        self.assertIn("2320", facts)
-        self.assertIn("2530", facts)
         say, place, end_call = parse_gemini_reply(
-            '{"say": "Yes! Tomato in Kolar is 1,800 rupees a quintal!", "save_place": "Kolar", "end_call": false}'
+            '{"say": "Tomato in Kolar is 1,800 rupees a quintal.", "save_place": "Kolar", "end_call": false}'
         )
         self.assertIn("1,800", say)
         self.assertEqual(known_place(place), "Kolar")
         self.assertFalse(end_call)
-        self.assertEqual(facts_for_question(self.db, "what is the price"), "")
+
+    def test_prices_come_from_the_dashboard_only(self) -> None:
+        from kisan.raitha import DEFAULT_URL, board_url, live_facts
+        import inspect
+
+        self.assertIsNone(importlib.util.find_spec("kisan.db"))
+        source = inspect.getsource(live_facts)
+        self.assertIn("snapshots", source)
+        self.assertNotIn("sqlite", source)
+        self.assertNotIn("kisan.db", source)
+        with patch.dict(os.environ, {"RAITHA_API_URL": ""}):
+            self.assertEqual(board_url(), DEFAULT_URL)
+
+    def test_caller_memory_is_postgres_and_keeps_numbers_apart(self) -> None:
+        import inspect
+
+        from kisan.memory import Memory, format_memory
+
+        source = inspect.getsource(Memory)
+        self.assertIn("psycopg", inspect.getsource(__import__("kisan.memory", fromlist=["memory"])))
+        self.assertNotIn("sqlite", source.lower())
+        self.assertNotIn("mandi_price", source)
+        self.assertIn("WHERE phone = %s", inspect.getsource(Memory.recent_calls))
+        self.assertIn("WHERE phone = %s", inspect.getsource(Memory.get_farmer))
+        phone = "+919812345678"
+        first = format_memory(phone, None, [])
+        self.assertIn("first stored call", first)
+        second = format_memory(
+            phone,
+            {"district": "Kolar", "crop": "tomato"},
+            [{
+                "ended_at": "2026-11-17 10:00",
+                "summary": "Farmer asked: tomato price in Kolar. Agent answered: 1800 rupees per quintal.",
+            }],
+        )
+        self.assertIn("1800 rupees", second)
+        self.assertIn("Kolar", second)
+        self.assertIn(phone, second)
+        self.assertNotIn("first stored call", second)
+        other = format_memory("+919800000001", None, [])
+        self.assertIn("first stored call", other)
+        self.assertNotIn("1800 rupees", other)
 
     def test_live_board_states_the_modal_for_the_asked_crop(self) -> None:
         from kisan.raitha import format_market_facts
@@ -280,13 +163,14 @@ class MemoryTests(unittest.TestCase):
                 "action_reason": "The nearby mandi covers the transport.",
             },
         ]
-        facts = format_market_facts(boards, self.db, "", None, ["potato", "maize"])
+        facts = format_market_facts(boards, "", None, ["potato", "maize"])
         self.assertIn("potato at Hassan APMC, Hassan, reported 2026-11-16.", facts)
         self.assertIn("Modal 3999.", facts)
         self.assertIn("shortage unknown", facts)
         self.assertIn("Supply: arrivals 2058 tonnes this week, usual 5602 tonnes, shortage yes.", facts)
         self.assertIn("tomato at Kolar APMC: modal 1200, reported 2026-11-16.", facts)
         self.assertNotIn("The trip is worth it", facts)
+        self.assertNotIn("1800", facts)
 
     def test_board_answers_when_the_model_is_busy(self) -> None:
         from kisan import raitha
