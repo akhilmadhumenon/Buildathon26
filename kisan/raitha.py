@@ -51,6 +51,7 @@ async def live_facts(
 ) -> str:
     """Price facts for the spoken reply. The dashboard is the only price source."""
     asked = _crops_in_turns(turns)
+    latest = next((text for role, text in reversed(turns) if role == "user"), "")
     try:
         boards = await snapshots(session)
     except Exception:
@@ -62,7 +63,7 @@ async def live_facts(
             "Market prices could not be loaded. Ask them to say the question once more. "
             "Do not invent a price."
         )
-    return format_market_facts(boards, phone, caller_point, asked)
+    return format_market_facts(boards, phone, caller_point, asked, _question_need(latest))
 
 
 async def snapshots(session: aiohttp.ClientSession) -> list[dict]:
@@ -126,31 +127,79 @@ def format_market_facts(
     phone: str,
     caller_point: dict | None,
     focus: list[str] | None = None,
+    need: set[str] | None = None,
 ) -> str:
-    """A short price sheet. The model speaks only the part the caller asked about."""
+    """A short price sheet. Extra lines are included only for what this question asked."""
     focus = focus or []
-    lines = [
-        f"Caller phone: {phone or 'unknown'}.",
-        "Prices are rupees per quintal from the mandi report. Modal is the usual price. "
-        "Min and max are the grade range. A 7-day figure is a prediction. "
-        "Shortage yes means this mandi has less supply than usual. "
-        "Use the advice when they ask whether to sell here or at another mandi.",
-    ]
+    lines = [f"Caller phone: {phone or 'unknown'}.", _fact_rule(need)]
     detailed = {crop for crop in focus} or {str(board.get("crop") or "") for board in boards}
     for board in boards:
         crop = str(board.get("crop") or "")
         if crop in detailed:
-            lines.append(_detail(board))
+            lines.append(_detail(board, need))
         else:
             lines.append(_brief(board))
-    if KEEPING:
-        kept = ". ".join(f"{crop} {days} days {note}" for crop, (days, note) in sorted(KEEPING.items()))
-        lines.append("How long the harvest keeps: " + kept + ".")
+    if need and "wait" in need and KEEPING:
+        kept = [
+            f"{crop} {days} days {note}"
+            for crop, (days, note) in sorted(KEEPING.items())
+            if not focus or crop in focus
+        ]
+        if kept:
+            lines.append("How long the harvest keeps: " + ". ".join(kept) + ".")
     lines.extend(_caller_lines(boards, caller_point))
     return "\n".join(line for line in lines if line)
 
 
-def _detail(board: dict) -> str:
+def _question_need(text: str) -> set[str]:
+    """Which fact lines this sentence actually needs. A bare price stays a price."""
+    needed: set[str] = set()
+    if _is_sell(text) or _asks_other(text):
+        needed.add("sell")
+    if _asks_wait(text):
+        needed.add("wait")
+    if _asks_forecast(text):
+        needed.add("forecast")
+    if _asks_grade(text):
+        needed.add("grade")
+    if not needed:
+        needed.add("price")
+    return needed
+
+
+def _fact_rule(need: set[str] | None) -> str:
+    if need == {"price"}:
+        return (
+            "They asked for a price. Say the modal, the mandi, and the reported date. "
+            "Do not mention supply, a forecast, another mandi, or whether to sell."
+        )
+    return (
+        "Prices are rupees per quintal from the mandi report. Modal is the usual price. "
+        "Use a forecast, the grade range, another mandi, or the sell advice only when that line is included below."
+    )
+
+
+_WAIT = ("wait", "spoil", "perish", "store", "how long", "कितने दिन", "ಎಷ್ಟು ದಿನ", "ಕೆಡ", "खराब")
+_FORECAST = ("forecast", "prediction", "next week", "7 day", "7-day", "अगले", "ಮುಂದಿನ")
+_GRADE = ("grade", "quality", "range", "गुणवत्ता", "ಗುಣಮಟ್ಟ")
+
+
+def _asks_wait(question: str) -> bool:
+    text = (question or "").lower()
+    return any(word in text for word in _WAIT)
+
+
+def _asks_forecast(question: str) -> bool:
+    text = (question or "").lower()
+    return any(word in text for word in _FORECAST)
+
+
+def _asks_grade(question: str) -> bool:
+    text = (question or "").lower()
+    return any(word in text for word in _GRADE)
+
+
+def _detail(board: dict, need: set[str] | None = None) -> str:
     crop = board.get("crop") or "crop"
     mandi = board.get("mandi") or "the mandi"
     district = board.get("district") or ""
@@ -159,17 +208,21 @@ def _detail(board: dict) -> str:
     modal = _rupees(board.get("modal"))
     if modal:
         parts.append(f"Modal {modal}.")
-    low, high = _rupees(board.get("min_price")), _rupees(board.get("max_price"))
-    if low and high:
-        parts.append(f"Range {low} to {high}.")
-    seasonal = _rupees(board.get("seasonal_modal"))
-    if seasonal:
-        parts.append(f"Same week last year {seasonal}.")
-    parts.append(_supply(board))
-    forecast = _rupees(board.get("forecast_7d"))
-    parts.append(f"7-day prediction {forecast}." if forecast else "No 7-day prediction.")
+    wanted = need if need is not None else {"sell", "forecast", "grade", "wait"}
+    if "grade" in wanted:
+        low, high = _rupees(board.get("min_price")), _rupees(board.get("max_price"))
+        if low and high:
+            parts.append(f"Range {low} to {high}.")
+    if "sell" in wanted or need is None:
+        seasonal = _rupees(board.get("seasonal_modal"))
+        if seasonal and need is None:
+            parts.append(f"Same week last year {seasonal}.")
+        parts.append(_supply(board))
+    if "forecast" in wanted or "wait" in wanted:
+        forecast = _rupees(board.get("forecast_7d"))
+        parts.append(f"7-day prediction {forecast}." if forecast else "No 7-day prediction.")
     nearby = board.get("nearby") or {}
-    if isinstance(nearby, dict) and nearby.get("mandi"):
+    if ("sell" in wanted or need is None) and isinstance(nearby, dict) and nearby.get("mandi"):
         near_modal = _rupees(nearby.get("modal"))
         distance = nearby.get("distance_km")
         transport = _rupees(nearby.get("transport_rs_per_qtl"))
@@ -187,7 +240,7 @@ def _detail(board: dict) -> str:
         parts.append(trip)
     advice = str(board.get("action_label") or "").strip()
     reason = " ".join(str(board.get("action_reason") or "").split())
-    if advice and advice.lower() != "no advice":
+    if ("sell" in wanted or need is None) and advice and advice.lower() != "no advice":
         if len(reason) > 280:
             reason = reason[:277].rstrip() + "..."
         parts.append(f"Advice if they ask whether to sell: {advice}. {reason}".rstrip())

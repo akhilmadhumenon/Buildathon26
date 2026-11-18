@@ -171,6 +171,15 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("tomato at Kolar APMC: modal 1200, reported 2026-11-16.", facts)
         self.assertNotIn("The trip is worth it", facts)
         self.assertNotIn("1800", facts)
+        price = format_market_facts(boards, "", None, ["tomato"], {"price"})
+        self.assertIn("Modal 1200.", price)
+        self.assertIn("They asked for a price.", price)
+        self.assertNotIn("Advice if they ask", price)
+        self.assertNotIn("The trip is worth it", price)
+        self.assertNotIn("How long the harvest keeps", price)
+        sell = format_market_facts(boards, "", None, ["tomato"], {"sell"})
+        self.assertIn("Advice if they ask whether to sell", sell)
+        self.assertIn("The trip is worth it", sell)
 
     def test_board_answers_when_the_model_is_busy(self) -> None:
         from kisan import raitha
