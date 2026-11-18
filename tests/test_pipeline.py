@@ -253,7 +253,7 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(end_call)
         payload = chat_payload("sarvam-105b", "Modal 1800 at Kolar.")
         self.assertEqual(payload["model"], "sarvam-105b")
-        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertIsNone(payload["reasoning_effort"])
         self.assertEqual(payload["response_format"]["type"], "json_schema")
         self.assertIn("1800", payload["messages"][1]["content"])
 

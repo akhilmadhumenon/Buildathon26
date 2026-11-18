@@ -56,7 +56,8 @@ def chat_payload(model: str, prompt: str, *, structured: bool = True) -> dict:
         ],
         "temperature": 0.4,
         "max_tokens": 256,
-        "reasoning_effort": "none",
+        # null disables thinking. "none" is rejected, and the default spends the reply budget on reasoning.
+        "reasoning_effort": None,
     }
     if structured:
         payload["response_format"] = _REPLY_SCHEMA
@@ -154,8 +155,6 @@ async def _complete(
     headers = {"api-subscription-key": key, "Content-Type": "application/json"}
     timeout = aiohttp.ClientTimeout(total=8)
     payload = chat_payload(model, prompt, structured=structured)
-    if not structured:
-        payload.pop("reasoning_effort", None)
     async with session.post(SARVAM_CHAT_URL, json=payload, headers=headers, timeout=timeout) as response:
         body = await response.text()
         if response.status >= 400:
