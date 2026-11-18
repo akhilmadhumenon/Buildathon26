@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,8 @@ from app.db import connect, rows
 from app.forecast import fit_tomato, round_metric, snapshot
 from app.prices import load_price_frame, read_prices, write_prices
 from app.triggers import queue_callback, rebuild, set_status
+from app.voice import answer as voice_answer
+from app.voice import build_cards
 from app.weather import load as load_weather
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +44,7 @@ _sync_state = {
     "latest": {},
     "detail": None,
 }
+_weather_started = False
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -88,6 +92,15 @@ class WeeklyPlan(BaseModel):
     district: str | None = None
     soil_type: str | None = None
     question: str | None = None
+
+
+class VoiceQuestion(BaseModel):
+    text: str = ""
+    phone: str | None = None
+    language: str | None = None
+    crop: str | None = None
+    place: str | None = None
+    sown_on: str | None = None
 
 
 class Suppress(BaseModel):
@@ -138,6 +151,7 @@ def _reload_prices() -> dict:
         connection.commit()
     app.state.prices = frame
     app.state.tomato = fit_tomato(frame)
+    _refresh_voice()
     return _latest_days(frame)
 
 
@@ -175,6 +189,7 @@ def _load() -> None:
         app.state.weather = {"places": {}}
         app.state.climate = {"places": {}}
         app.state.gates = {}
+        app.state.voice_cards = {}
         return
     with connect(DB_PATH) as connection:
         app.state.prices = read_prices(connection)
@@ -182,6 +197,8 @@ def _load() -> None:
     app.state.tomato = fit_tomato(app.state.prices)
     app.state.weather = load_weather()
     app.state.climate = load_climate()
+    _refresh_voice()
+    _keep_weather_fresh()
 
 
 @app.get("/")
@@ -194,6 +211,21 @@ def health():
     prices = app.state.prices
     crops = sorted(prices["crop"].unique()) if prices is not None and not prices.empty else []
     return {"ok": True, "crops_loaded": crops, "tomato_model": bool(app.state.tomato.get("ready"))}
+
+
+@app.post("/v1/voice/answer")
+def voice(body: VoiceQuestion, connection=Depends(_db)):
+    return voice_answer(
+        cards=getattr(app.state, "voice_cards", {}),
+        weather=getattr(app.state, "weather", {}),
+        text=body.text,
+        language=body.language,
+        crop=body.crop,
+        place=body.place,
+        phone=body.phone,
+        sown_on=body.sown_on,
+        connection=connection,
+    )
 
 
 @app.post("/v1/calls/inbound")
@@ -426,6 +458,28 @@ def rebuild_queue(connection=Depends(_db)):
 
 def _refresh_gates(connection) -> None:
     app.state.gates = {row["crop"]: row for row in rows(connection, "SELECT * FROM gate_prices")}
+    _refresh_voice()
+
+
+def _refresh_voice() -> None:
+    app.state.voice_cards = build_cards(app.state.prices, app.state.tomato, app.state.gates)
+
+
+def _keep_weather_fresh() -> None:
+    global _weather_started
+    if _weather_started:
+        return
+    _weather_started = True
+
+    def loop() -> None:
+        while True:
+            time.sleep(3 * 60 * 60)
+            try:
+                app.state.weather = load_weather()
+            except Exception:
+                continue
+
+    threading.Thread(target=loop, name="weather-refresh", daemon=True).start()
 
 
 @app.post("/v1/admin/gate")

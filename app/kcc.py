@@ -138,7 +138,13 @@ def _live_rows(crop: str) -> list[dict]:
     return found
 
 
-def ground(question: str | None, crop: str | None, connection=None, minimum: float = 0.4) -> dict | None:
+def ground(
+    question: str | None,
+    crop: str | None,
+    connection=None,
+    minimum: float = 0.4,
+    live: bool = True,
+) -> dict | None:
     """Local KCC first. A configured data.gov.in key is the only live step, and its rows are stored."""
     if not question or not question.strip():
         return None
@@ -146,6 +152,8 @@ def ground(question: str | None, crop: str | None, connection=None, minimum: flo
     hit = _best(_merged(connection), question, chosen, minimum)
     if hit:
         return _shape(hit, "deterministic")
+    if not live:
+        return None
     fresh = _live_rows(chosen or "")
     if not fresh or connection is None:
         return None
