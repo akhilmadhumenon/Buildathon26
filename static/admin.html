@@ -516,6 +516,8 @@
         colStatus: "Status",
         colAction: "Action",
         approve: "Approve",
+        dial: "Call",
+        dialFailed: "KisanCall did not place the call.",
         holdBack: "Hold back",
         callback: "Call again",
         callbackLead: "Follow-up to the same farmer.",
@@ -590,6 +592,8 @@
         status_approved: "approved",
         status_suppressed: "suppressed",
         status_called: "called",
+        status_yes: "yes",
+        status_no: "no",
         reason_in_transit: "in transit",
         reason_sale_complete: "sale complete",
         reason_rain: "heavy rain",
@@ -676,6 +680,8 @@
         colStatus: "स्थिति",
         colAction: "कार्रवाई",
         approve: "मंजूर करें",
+        dial: "कॉल करें",
+        dialFailed: "KisanCall कॉल नहीं लगा सका.",
         holdBack: "रोकें",
         callback: "फिर कॉल करें",
         callbackLead: "उसी किसान को दोबारा कॉल.",
@@ -750,6 +756,8 @@
         status_approved: "मंजूर",
         status_suppressed: "रोका गया",
         status_called: "कॉल हो चुकी",
+        status_yes: "हाँ",
+        status_no: "नहीं",
         reason_in_transit: "रास्ते में",
         reason_sale_complete: "बिक्री पूरी",
         reason_rain: "भारी बारिश",
@@ -836,6 +844,8 @@
         colStatus: "ಸ್ಥಿತಿ",
         colAction: "ಕ್ರಮ",
         approve: "ಅನುಮೋದಿಸಿ",
+        dial: "ಕರೆ ಮಾಡಿ",
+        dialFailed: "KisanCall ಕರೆ ಮಾಡಲಿಲ್ಲ.",
         holdBack: "ತಡೆಹಿಡಿ",
         callback: "ಮತ್ತೆ ಕರೆ ಮಾಡಿ",
         callbackLead: "ಅದೇ ರೈತನಿಗೆ ಮತ್ತೆ ಕರೆ.",
@@ -910,6 +920,8 @@
         status_approved: "ಅನುಮೋದಿತ",
         status_suppressed: "ತಡೆಹಿಡಿದ",
         status_called: "ಕರೆ ಆಗಿದೆ",
+        status_yes: "ಹೌದು",
+        status_no: "ಇಲ್ಲ",
         reason_in_transit: "ದಾರಿಯಲ್ಲಿ",
         reason_sale_complete: "ಮಾರಾಟ ಮುಗಿದಿದೆ",
         reason_rain: "ಭಾರೀ ಮಳೆ",
@@ -1291,7 +1303,8 @@
         return;
       }
       const farmers = lastPeople.farmers;
-      const triggers = lastPeople.triggers;
+      const crop = cropSelect.value || "tomato";
+      const triggers = lastPeople.triggers.filter((item) => item.crop === crop);
       const waiting = triggers.filter((item) => item.status === "proposed").length;
       document.querySelector("#calls-count").textContent = waiting ? "(" + waiting + ")" : "";
       document.querySelector("#farmers").innerHTML = `<table>
@@ -1314,15 +1327,21 @@
         <thead><tr><th scope="col">${t("colFarmer")}</th><th scope="col">${t("colStatus")}</th><th scope="col">${t("colAction")}</th></tr></thead><tbody>` +
         triggers.map((item) => {
           let buttons = "";
+          if (item.status === "proposed" || item.status === "approved" || item.status === "yes" || item.status === "no") {
+            buttons = `<button type="button" data-dial="${item.id}">${t("dial")}</button> `;
+          }
           if (item.status === "proposed") {
-            buttons = `<button type="button" data-approve="${item.id}">${t("approve")}</button> <button type="button" class="ghost" data-suppress="${item.id}">${t("holdBack")}</button>`;
+            buttons += `<button type="button" data-approve="${item.id}">${t("approve")}</button> <button type="button" class="ghost" data-suppress="${item.id}">${t("holdBack")}</button>`;
           } else if (item.status === "called" || item.status === "suppressed") {
             buttons = `<button type="button" data-callback="${item.id}">${t("callback")}</button>`;
           }
           const why = item.suppress_reason
             ? t("heldBack", { reason: t("reason_" + item.suppress_reason) }) + " "
             : "";
-          return `<tr><td>${item.phone}<br>${cropName(item.crop)} · ${item.mandi}<br><span class="fine">${why}${displayReason(item.reason)}</span></td><td>${t("status_" + item.status)}</td><td>${buttons}</td></tr>`;
+          const spoken = item.result && item.result !== "dialed"
+            ? `<br><span class="fine">${item.result}</span>`
+            : "";
+          return `<tr><td>${item.phone}<br>${cropName(item.crop)} · ${item.mandi}<br><span class="fine">${why}${displayReason(item.reason)}</span></td><td>${t("status_" + item.status)}${spoken}</td><td>${buttons}</td></tr>`;
         }).join("") + "</tbody></table>";
     }
 
@@ -1332,6 +1351,7 @@
       const approve = button.dataset.approve;
       const suppress = button.dataset.suppress;
       const callbackId = button.dataset.callback;
+      const dialId = button.dataset.dial;
       const error = document.querySelector("#queue-error");
       if (approve) await fetch("/v1/admin/triggers/" + approve + "/approve", { method: "POST" });
       if (suppress) await fetch("/v1/admin/triggers/" + suppress + "/suppress", {
@@ -1352,7 +1372,18 @@
         }
         error.textContent = "";
       }
-      if (approve || suppress || callbackId) loadPeople();
+      if (dialId) {
+        button.disabled = true;
+        const response = await fetch("/v1/admin/triggers/" + dialId + "/dial", { method: "POST" });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          error.textContent = body.detail || t("dialFailed");
+          button.disabled = false;
+          return;
+        }
+        error.textContent = "";
+      }
+      if (approve || suppress || callbackId || dialId) loadPeople();
     });
 
     document.querySelector("#gate-form").addEventListener("submit", async (event) => {
@@ -1556,8 +1587,12 @@
       renderSync();
     });
 
-    cropSelect.addEventListener("change", loadBoard);
+    cropSelect.addEventListener("change", () => {
+      loadBoard();
+      renderPeople();
+    });
     loadBoard().then(loadPeople);
+    setInterval(loadPeople, 4000);
     loadClimate();
   </script>
 </body>

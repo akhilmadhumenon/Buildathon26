@@ -6,6 +6,8 @@ import json
 import os
 import threading
 import time
+import urllib.error
+import urllib.request
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +23,8 @@ from app.calls import apply_turn, complete_call, start_call
 from app.climate import load as load_climate
 from app.climate import nearest_screened_district, suitability, worldclim_shifts
 from app.crops import CROPS, canonical_crop
-from app.db import connect, rows
+from app.db import connect, database_url, open_store, rows
+from app.demo import ensure_demo_maize
 from app.forecast import fit_tomato, round_metric, snapshot
 from app.prices import load_price_frame, read_prices, write_prices
 from app.triggers import queue_callback, rebuild, set_status
@@ -107,6 +110,10 @@ class Suppress(BaseModel):
     reason: str = "admin"
 
 
+class SaleAnswer(BaseModel):
+    answer: str
+
+
 class GatePrice(BaseModel):
     crop: str
     modal: float
@@ -115,9 +122,9 @@ class GatePrice(BaseModel):
 
 
 def _db():
-    if not DB_PATH.exists():
+    if not database_url() and not DB_PATH.exists():
         raise HTTPException(status_code=503, detail="Database is missing. Run scripts/bootstrap.py.")
-    connection = connect(DB_PATH)
+    connection = open_store(DB_PATH)
     try:
         yield connection
     finally:
@@ -183,20 +190,28 @@ def _run_sync() -> None:
 
 
 def _load() -> None:
-    if not DB_PATH.exists():
+    if DB_PATH.exists():
+        with connect(DB_PATH) as connection:
+            app.state.prices = read_prices(connection)
+            if not database_url():
+                app.state.gates = {row["crop"]: row for row in rows(connection, "SELECT * FROM gate_prices")}
+    else:
         app.state.prices = pd.DataFrame()
+    if database_url():
+        with open_store(DB_PATH) as connection:
+            app.state.gates = {row["crop"]: row for row in rows(connection, "SELECT * FROM gate_prices")}
+    elif not DB_PATH.exists():
         app.state.tomato = {"ready": False, "reason": "Database is missing."}
         app.state.weather = {"places": {}}
         app.state.climate = {"places": {}}
         app.state.gates = {}
         app.state.voice_cards = {}
         return
-    with connect(DB_PATH) as connection:
-        app.state.prices = read_prices(connection)
-        app.state.gates = {row["crop"]: row for row in rows(connection, "SELECT * FROM gate_prices")}
     app.state.tomato = fit_tomato(app.state.prices)
     app.state.weather = load_weather()
     app.state.climate = load_climate()
+    with open_store(DB_PATH) as connection:
+        ensure_demo_maize(connection)
     _refresh_voice()
     _keep_weather_fresh()
 
@@ -387,6 +402,64 @@ def farmers(connection=Depends(_db)):
 def triggers(connection=Depends(_db)):
     found = _with_citations(rows(connection, "SELECT * FROM triggers ORDER BY id DESC"))
     return {"triggers": found}
+
+
+def _kisan_url() -> str:
+    return (os.environ.get("KISAN_URL") or os.environ.get("RAILWAY_SERVICE_KISANCALL_URL") or "").strip().rstrip("/")
+
+
+@app.post("/v1/admin/triggers/{trigger_id}/dial")
+def dial(trigger_id: int, connection=Depends(_db)):
+    current = connection.execute("SELECT * FROM triggers WHERE id = ?", (trigger_id,)).fetchone()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Unknown trigger.")
+    if current["status"] == "suppressed":
+        raise HTTPException(status_code=400, detail="This call is held back.")
+    base = _kisan_url()
+    if not base:
+        raise HTTPException(status_code=503, detail="KisanCall is not configured.")
+    person = connection.execute(
+        "SELECT language FROM farmers WHERE phone = ?",
+        (current["phone"],),
+    ).fetchone()
+    language = person["language"] if person and person["language"] in {"en", "hi", "kn"} else "en"
+    payload = json.dumps({
+        "phone": current["phone"],
+        "crop": current["crop"],
+        "district": "Bengaluru",
+        "language": language,
+        "trigger_id": trigger_id,
+        "mandi": current["mandi"],
+    }).encode()
+    request = urllib.request.Request(
+        base + "/exotel/dial",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            body = json.loads(response.read().decode() or "{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode()[:180]
+        raise HTTPException(status_code=502, detail=detail or "KisanCall did not place the call.") from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail="KisanCall did not answer.") from exc
+    updated = set_status(connection, trigger_id, "called", result="dialed")
+    return {"trigger": updated, "call": body}
+
+
+@app.post("/v1/admin/triggers/{trigger_id}/answer")
+def record_answer(trigger_id: int, body: SaleAnswer, connection=Depends(_db)):
+    choice = body.answer.strip().lower()
+    if choice not in {"yes", "no"}:
+        raise HTTPException(status_code=400, detail="Answer must be yes or no.")
+    current = connection.execute("SELECT id FROM triggers WHERE id = ?", (trigger_id,)).fetchone()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Unknown trigger.")
+    result = "Farmer said yes." if choice == "yes" else "Farmer said no."
+    updated = set_status(connection, trigger_id, choice, result=result)
+    return {"trigger": updated}
 
 
 @app.post("/v1/admin/triggers/{trigger_id}/approve")

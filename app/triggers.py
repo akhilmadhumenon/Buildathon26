@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from app.crops import CALL_WINDOW_DAYS
 from app.db import rows
+from app.demo import DEMO_PHONE, ensure_demo_maize
 from app.forecast import apply_harvest_state, snapshot
 from app.weather import rain_outlook
 
@@ -47,7 +48,7 @@ def rebuild(connection, frame, tomato_model, weather_cache, gates: dict | None =
             continue
         outlook = rain_outlook(weather_cache, farmer["district"] or snap["district"])
         wants_call = snap["action"] in {"sell_now", "sell_nearby"} or snap["shortage"] is True
-        if not farmer["opt_in"] or not wants_call:
+        if farmer["phone"] == DEMO_PHONE or not farmer["opt_in"] or not wants_call:
             continue
         already = connection.execute(
             """
@@ -89,6 +90,7 @@ def rebuild(connection, frame, tomato_model, weather_cache, gates: dict | None =
             ),
         )
     connection.commit()
+    ensure_demo_maize(connection)
     return rows(connection, "SELECT * FROM triggers ORDER BY id DESC")
 
 
