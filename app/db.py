@@ -212,7 +212,12 @@ def postgres() -> PgConnection:
     import psycopg
     from psycopg.rows import dict_row
 
-    connection = PgConnection(psycopg.connect(database_url(), row_factory=dict_row))
+    raw = psycopg.connect(database_url(), row_factory=dict_row)
+    # KisanCall already owns public.farmers and public.calls in this database.
+    raw.execute("CREATE SCHEMA IF NOT EXISTS desk")
+    raw.execute("SET search_path TO desk")
+    raw.commit()
+    connection = PgConnection(raw)
     connection.executescript(PG_SCHEMA)
     return connection
 
