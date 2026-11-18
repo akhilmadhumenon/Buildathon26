@@ -24,6 +24,7 @@ from kisan.advice import (
     should_answer,
     spoken_mandi,
 )
+from kisan.gemini_reply import gemini_reply
 from kisan.names import correct_transcript
 from kisan.audio import CHUNK_BYTES, PcmBuffer, audio_chunks, wav_to_pcm
 from kisan.db import Database, normalize_phone, now_iso

@@ -148,6 +148,14 @@ class MemoryTests(unittest.TestCase):
         self.assertIn("1,800", tomato)
         self.assertIn("1,100", tomato)
         self.assertIn("Sell at Kolar now", tomato)
+        banana = spoken_mandi(
+            self.db,
+            "Should I sell my banana in Huskur now, or wait a week?",
+            "en",
+        )
+        self.assertIn("1,800", banana)
+        self.assertIn("Sell at Huskur now", banana)
+        self.assertNotIn("Wait a week", banana)
         with self.db.session() as conn:
             conn.execute(
                 """

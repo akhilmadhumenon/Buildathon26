@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Callable
 from urllib.request import Request, urlopen
 
-from kisan.db import CROP_ALIASES, DISTRICT_COORDS, PLACE_ALIASES, Database, canonical_place
+from kisan.db import CROP_ALIASES, DISTRICT_COORDS, KEEPING, PLACE_ALIASES, Database, canonical_place
 from kisan.summary import overlap_score
 
 WeatherLookup = Callable[[str], str]
@@ -455,7 +455,10 @@ def speak_sale(db: Database, crop: str, place: str, language: str, question: str
     others = [name for name in series if name != anchor]
     neighbour = _closest(place or anchor, others)
     neighbour_now = _now_and_week(series[neighbour])[0] if neighbour else None
-    options: list[tuple[str, str, int]] = [("now", anchor, now), ("week", anchor, week)]
+    keeps = KEEPING.get(crop, (7, ""))[0]
+    options: list[tuple[str, str, int]] = [("now", anchor, now)]
+    if keeps >= 7:
+        options.append(("week", anchor, week))
     if neighbour and neighbour_now is not None:
         options.append(("nearby", neighbour, neighbour_now))
     rank = {"now": 0, "week": 1, "nearby": 2}
@@ -833,6 +836,11 @@ def market_facts(db: Database, phone: str = "", caller_point: dict | None = None
         lines.append(
             f"{row['crop']} {row['mandi']}: today {now}. Forecast {ahead}. Week {week}."
         )
+    if KEEPING:
+        kept = ". ".join(
+            f"{crop} {days} days {note}" for crop, (days, note) in sorted(KEEPING.items())
+        )
+        lines.append("How long the harvest keeps: " + kept + ".")
     return "\n".join(lines)
 
 

@@ -388,6 +388,20 @@ class Database:
         return dict(row) if row else None
 
 
+# Days the harvested crop can wait, and the condition that limit applies to.
+# A higher price is worth waiting for only when the harvest keeps that long.
+KEEPING = {
+    "banana": (4, "once ripe; a little longer if still green"),
+    "mango": (5, "once ripe"),
+    "grapes": (4, "once picked"),
+    "tomato": (5, "once ripe"),
+    "chilli": (5, "fresh pods"),
+    "onion": (30, "if dry"),
+    "maize": (90, "if dry"),
+    "paddy": (180, "after drying"),
+    "ragi": (180, "after drying"),
+}
+
 SEED_CROPS = [
     ("ragi", 120, "Harvest when the earheads turn brown and the grain is hard."),
     ("tomato", 90, "Pick when fruits are firm and starting to colour. Heavy rain splits ripe fruit."),
