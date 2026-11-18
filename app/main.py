@@ -435,6 +435,7 @@ def dial(trigger_id: int, connection=Depends(_db)):
         "language": language,
         "trigger_id": trigger_id,
         "mandi": current["mandi"],
+        "reason": current["reason"],
     }).encode()
     request = urllib.request.Request(
         base + "/exotel/dial",
