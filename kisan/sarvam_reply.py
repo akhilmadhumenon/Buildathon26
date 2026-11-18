@@ -19,7 +19,16 @@ from kisan.reference import Caller
 
 logger = logging.getLogger("kisan.exotel")
 
-SARVAM_CHAT_URL = "https://api.sarvam.ai/v1/chat/completions"
+_V1_CHAT_URL = "https://api.sarvam.ai/v1/chat/completions"
+_V2_CHAT_URL = "https://api.sarvam.ai/v2/chat/completions"
+_V1_MODELS = {"sarvam-105b", "sarvam-105b-conversations"}
+
+
+def chat_url(model: str) -> str:
+    """Conversations stays on v1. Gemma and the other open models are on v2."""
+    if model in _V1_MODELS:
+        return _V1_CHAT_URL
+    return _V2_CHAT_URL
 
 _REPLY_SCHEMA = {
     "type": "json_schema",
@@ -106,7 +115,7 @@ async def sarvam_reply(
     if not key:
         logger.info("sarvam chat skipped, no API key")
         return None
-    model = os.environ.get("SARVAM_LLM_MODEL", "sarvam-105b").strip() or "sarvam-105b"
+    model = os.environ.get("SARVAM_LLM_MODEL", "gemma4").strip() or "gemma4"
     owns_session = http is None
     session = http or aiohttp.ClientSession()
     try:
@@ -155,7 +164,7 @@ async def _complete(
     headers = {"api-subscription-key": key, "Content-Type": "application/json"}
     timeout = aiohttp.ClientTimeout(total=8)
     payload = chat_payload(model, prompt, structured=structured)
-    async with session.post(SARVAM_CHAT_URL, json=payload, headers=headers, timeout=timeout) as response:
+    async with session.post(chat_url(model), json=payload, headers=headers, timeout=timeout) as response:
         body = await response.text()
         if response.status >= 400:
             logger.warning("sarvam chat returned %s", response.status)

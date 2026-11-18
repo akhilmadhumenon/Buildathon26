@@ -226,7 +226,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_sarvam_reads_a_chat_reply(self) -> None:
         from kisan.gemini_reply import parse_gemini_reply
-        from kisan.sarvam_reply import _message_text, chat_payload
+        from kisan.sarvam_reply import _message_text, chat_payload, chat_url
 
         text = _message_text(
             {
@@ -264,6 +264,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(payload["model"], "sarvam-105b")
         self.assertIsNone(payload["reasoning_effort"])
         self.assertEqual(payload["response_format"]["type"], "json_schema")
+        self.assertIn("v1", chat_url("sarvam-105b-conversations"))
+        self.assertIn("v2", chat_url("gemma4"))
         self.assertIn("1800", payload["messages"][1]["content"])
 
     def test_sarvam_rate_limit_returns_nothing(self) -> None:
