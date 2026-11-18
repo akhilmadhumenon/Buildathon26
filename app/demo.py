@@ -16,6 +16,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def revert_demo(connection, trigger_id: int) -> dict | None:
+    """Put the demo call back to proposed and clear the yes or no."""
+    current = connection.execute("SELECT * FROM triggers WHERE id = ?", (trigger_id,)).fetchone()
+    if current is None or current["phone"] != DEMO_PHONE:
+        return None
+    connection.execute(
+        """
+        UPDATE triggers
+        SET status = 'proposed', suppress_reason = NULL, result = NULL
+        WHERE id = ?
+        """,
+        (trigger_id,),
+    )
+    connection.commit()
+    row = connection.execute("SELECT * FROM triggers WHERE id = ?", (trigger_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def ensure_demo_maize(connection) -> None:
     """Keep this caller opted in, harvested, and proposed. Never held back."""
     sow_date = (date.today() - timedelta(days=100)).isoformat()

@@ -517,6 +517,7 @@
         colAction: "Action",
         approve: "Approve",
         dial: "Call",
+        revert: "Revert",
         dialFailed: "KisanCall did not place the call.",
         holdBack: "Hold back",
         callback: "Call again",
@@ -681,6 +682,7 @@
         colAction: "कार्रवाई",
         approve: "मंजूर करें",
         dial: "कॉल करें",
+        revert: "वापस करें",
         dialFailed: "KisanCall कॉल नहीं लगा सका.",
         holdBack: "रोकें",
         callback: "फिर कॉल करें",
@@ -845,6 +847,7 @@
         colAction: "ಕ್ರಮ",
         approve: "ಅನುಮೋದಿಸಿ",
         dial: "ಕರೆ ಮಾಡಿ",
+        revert: "ಹಿಂದಕ್ಕೆ",
         dialFailed: "KisanCall ಕರೆ ಮಾಡಲಿಲ್ಲ.",
         holdBack: "ತಡೆಹಿಡಿ",
         callback: "ಮತ್ತೆ ಕರೆ ಮಾಡಿ",
@@ -1335,6 +1338,9 @@
           } else if (item.status === "called" || item.status === "suppressed") {
             buttons = `<button type="button" data-callback="${item.id}">${t("callback")}</button>`;
           }
+          if (item.demo && item.status !== "proposed") {
+            buttons += ` <button type="button" class="ghost" data-revert="${item.id}">${t("revert")}</button>`;
+          }
           const why = item.suppress_reason
             ? t("heldBack", { reason: t("reason_" + item.suppress_reason) }) + " "
             : "";
@@ -1352,6 +1358,7 @@
       const suppress = button.dataset.suppress;
       const callbackId = button.dataset.callback;
       const dialId = button.dataset.dial;
+      const revertId = button.dataset.revert;
       const error = document.querySelector("#queue-error");
       if (approve) await fetch("/v1/admin/triggers/" + approve + "/approve", { method: "POST" });
       if (suppress) await fetch("/v1/admin/triggers/" + suppress + "/suppress", {
@@ -1383,7 +1390,16 @@
         }
         error.textContent = "";
       }
-      if (approve || suppress || callbackId || dialId) loadPeople();
+      if (revertId) {
+        const response = await fetch("/v1/admin/triggers/" + revertId + "/revert", { method: "POST" });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          error.textContent = body.detail || t("dialFailed");
+          return;
+        }
+        error.textContent = "";
+      }
+      if (approve || suppress || callbackId || dialId || revertId) loadPeople();
     });
 
     document.querySelector("#gate-form").addEventListener("submit", async (event) => {

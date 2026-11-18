@@ -24,7 +24,7 @@ from app.climate import load as load_climate
 from app.climate import nearest_screened_district, suitability, worldclim_shifts
 from app.crops import CROPS, canonical_crop
 from app.db import connect, database_url, open_store, rows
-from app.demo import ensure_demo_maize
+from app.demo import DEMO_PHONE, ensure_demo_maize, revert_demo
 from app.forecast import fit_tomato, round_metric, snapshot
 from app.prices import load_price_frame, read_prices, write_prices
 from app.triggers import queue_callback, rebuild, set_status
@@ -401,6 +401,8 @@ def farmers(connection=Depends(_db)):
 @app.get("/v1/admin/triggers")
 def triggers(connection=Depends(_db)):
     found = _with_citations(rows(connection, "SELECT * FROM triggers ORDER BY id DESC"))
+    for item in found:
+        item["demo"] = item["phone"] == DEMO_PHONE
     return {"triggers": found}
 
 
@@ -462,6 +464,14 @@ def record_answer(trigger_id: int, body: SaleAnswer, connection=Depends(_db)):
         raise HTTPException(status_code=404, detail="Unknown trigger.")
     result = "Farmer said yes." if choice == "yes" else "Farmer said no."
     updated = set_status(connection, trigger_id, choice, result=result)
+    return {"trigger": updated}
+
+
+@app.post("/v1/admin/triggers/{trigger_id}/revert")
+def revert(trigger_id: int, connection=Depends(_db)):
+    updated = revert_demo(connection, trigger_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Only the demo call can be reverted.")
     return {"trigger": updated}
 
 
