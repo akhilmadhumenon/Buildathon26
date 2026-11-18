@@ -64,13 +64,35 @@ def chat_payload(model: str, prompt: str, *, structured: bool = True) -> dict:
 
 
 def _message_text(data: dict) -> str:
+    """The reply text, whether Sarvam returned a string, a JSON object, or a list of parts."""
     choices = data.get("choices") or []
     if not choices or not isinstance(choices[0], dict):
         return ""
     message = choices[0].get("message") or {}
-    content = message.get("content")
+    text = _content_text(message.get("content"))
+    if text:
+        return text
+    reasoning = message.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning.strip().startswith("{"):
+        say, _, _ = parse_gemini_reply(reasoning)
+        if say:
+            return reasoning.strip()
+    return ""
+
+
+def _content_text(content: object) -> str:
     if isinstance(content, str):
         return content.strip()
+    if isinstance(content, dict):
+        return json.dumps(content, ensure_ascii=False)
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("text"):
+                parts.append(str(part["text"]))
+            else:
+                parts.append(_content_text(part))
+        return "\n".join(part for part in parts if part).strip()
     return ""
 
 
@@ -114,23 +136,34 @@ async def _post_sarvam(
     key: str,
     prompt: str,
 ) -> str | None:
+    text = await _complete(session, model, key, prompt, structured=True)
+    if text:
+        return text
+    logger.warning("sarvam chat had no speakable text, retrying without a schema")
+    return await _complete(session, model, key, prompt, structured=False)
+
+
+async def _complete(
+    session: aiohttp.ClientSession,
+    model: str,
+    key: str,
+    prompt: str,
+    *,
+    structured: bool,
+) -> str | None:
     headers = {"api-subscription-key": key, "Content-Type": "application/json"}
     timeout = aiohttp.ClientTimeout(total=8)
-    payload = chat_payload(model, prompt)
+    payload = chat_payload(model, prompt, structured=structured)
+    if not structured:
+        payload.pop("reasoning_effort", None)
     async with session.post(SARVAM_CHAT_URL, json=payload, headers=headers, timeout=timeout) as response:
         body = await response.text()
-        if response.status == 400:
-            plain = chat_payload(model, prompt, structured=False)
-            plain.pop("reasoning_effort", None)
-            async with session.post(SARVAM_CHAT_URL, json=plain, headers=headers, timeout=timeout) as retry:
-                body = await retry.text()
-                if retry.status >= 400:
-                    logger.warning("sarvam chat returned %s", retry.status)
-                    return None
-                data = json.loads(body)
-        elif response.status >= 400:
+        if response.status >= 400:
             logger.warning("sarvam chat returned %s", response.status)
             return None
-        else:
+        try:
             data = json.loads(body)
+        except json.JSONDecodeError:
+            logger.warning("sarvam chat returned text that was not JSON")
+            return None
     return _message_text(data) or None

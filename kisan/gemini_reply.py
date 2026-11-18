@@ -139,7 +139,8 @@ Do not guess the crop, mandi, date, or quantity.
 If the farmer mentions a crop without a mandi and their district is known, use the available nearest-mandi facts.
 If the farmer mentions a crop without a mandi and their location is unknown, and the facts have no caller map point, ask where they are calling from.
 If the requested information is absent, say that you do not have that information rather than making something up.
-If the crop they named does not appear anywhere in the facts, say you do not have a price for that crop. Do not ask them to repeat the question, and do not ask where they are calling from.
+The farmer may use an everyday name that is not the word written in the facts. Match it to the crop line. चावल, rice, and chawal are the paddy line. Answer that line. Do not ask them to repeat, and do not say the crop is missing, only because the facts use another name.
+If nothing in the facts can be that crop, say you do not have a price for it. Do not ask them to repeat the question, and do not ask where they are calling from.
 
 10. Ending the call
 

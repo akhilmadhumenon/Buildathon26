@@ -216,6 +216,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(named_place("Kolar"), "Kolar")
 
     def test_sarvam_reads_a_chat_reply(self) -> None:
+        from kisan.gemini_reply import parse_gemini_reply
         from kisan.sarvam_reply import _message_text, chat_payload
 
         text = _message_text(
@@ -230,6 +231,26 @@ class PipelineTests(unittest.TestCase):
             }
         )
         self.assertIn("1800", text)
+        spoken = _message_text(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": {
+                                "say": "धान 2100 रुपये क्विंटल है।",
+                                "save_place": "",
+                                "end_call": False,
+                            }
+                        }
+                    }
+                ]
+            }
+        )
+        self.assertIn("2100", spoken)
+        say, _place, end_call = parse_gemini_reply(spoken)
+        self.assertIn("धान", say)
+        self.assertIn("2100", say)
+        self.assertFalse(end_call)
         payload = chat_payload("sarvam-105b", "Modal 1800 at Kolar.")
         self.assertEqual(payload["model"], "sarvam-105b")
         self.assertEqual(payload["reasoning_effort"], "none")
