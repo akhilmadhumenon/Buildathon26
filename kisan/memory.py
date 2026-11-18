@@ -49,6 +49,17 @@ SCHEMA = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS calls_phone_idx ON calls (phone, id DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS sale_calls (
+        phone TEXT PRIMARY KEY,
+        trigger_id INTEGER,
+        language TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        crop TEXT,
+        district TEXT,
+        created_at TIMESTAMPTZ NOT NULL
+    )
+    """,
 )
 
 
@@ -156,6 +167,65 @@ class Memory:
                 """,
                 record,
             )
+
+    def save_sale(
+        self,
+        phone: str,
+        *,
+        trigger_id: int | None,
+        language: str,
+        reason: str,
+        crop: str | None = None,
+        district: str | None = None,
+    ) -> None:
+        if not phone or not self.ready:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sale_calls
+                    (phone, trigger_id, language, reason, crop, district, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (phone) DO UPDATE SET
+                    trigger_id = EXCLUDED.trigger_id,
+                    language = EXCLUDED.language,
+                    reason = EXCLUDED.reason,
+                    crop = EXCLUDED.crop,
+                    district = EXCLUDED.district,
+                    created_at = EXCLUDED.created_at
+                """,
+                (phone, trigger_id, language, reason, crop, district, now_ist()),
+            )
+
+    def load_sale(self, phone: str) -> dict | None:
+        if not phone or not self.ready:
+            return None
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM sale_calls WHERE phone = %s", (phone,)).fetchone()
+        return dict(row) if row else None
+
+    def latest_sale(self) -> dict | None:
+        """The one outbound call placed in the last few minutes, when the line number does not match."""
+        if not self.ready:
+            return None
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM sale_calls
+                WHERE created_at > NOW() - INTERVAL '15 minutes'
+                ORDER BY created_at DESC
+                LIMIT 2
+                """
+            ).fetchall()
+        if len(rows) != 1:
+            return None
+        return dict(rows[0])
+
+    def clear_sale(self, phone: str) -> None:
+        if not phone or not self.ready:
+            return
+        with self._connect() as conn:
+            conn.execute("DELETE FROM sale_calls WHERE phone = %s", (phone,))
 
     def recent_calls(self, phone: str, limit: int = 5) -> list[dict]:
         if not phone or not self.ready:
