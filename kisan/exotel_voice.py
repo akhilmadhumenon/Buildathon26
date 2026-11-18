@@ -86,11 +86,22 @@ SALE_MISSED = {
     "kn": "ನಾನು ಕೇಳಿದೆ, ಆದರೆ ಡೆಸ್ಕ್ ಉಳಿಸಲಿಲ್ಲ. ಇನ್ನೊಮ್ಮೆ ಹೌದು ಅಥವಾ ಇಲ್ಲ ಅನ್ನಿ.",
 }
 
-_YES_WORD = re.compile(r"\b(yes|yeah|yep|yup|haan|hanji|okay|ok)\b", re.IGNORECASE)
+_YES_WORD = re.compile(r"\b(yes|yeah|yep|yup|haan|hanji)\b", re.IGNORECASE)
 _NO_WORD = re.compile(r"\b(no|nope|nah|nahi|nahin)\b", re.IGNORECASE)
 _YES_SCRIPT = ("हाँ", "हां", "ಹೌದು")
 _NO_SCRIPT = ("नहीं", "नही", "ಇಲ್ಲ", "ಬೇಡ")
 _PENDING: dict[str, dict] = {}
+
+
+def _sale_echo(text: str) -> bool:
+    """The phone hears its own hello. That is not the farmer's yes or no."""
+    folded = " ".join(text.casefold().split()).strip(" .,!?")
+    if folded in {"hello", "hi", "hey", "okay", "ok", "yeah"}:
+        return True
+    return any(
+        phrase in folded
+        for phrase in ("yes or no", "will you sell", "ready to sell", "shortage", "please say")
+    )
 
 
 def sale_choice(text: str) -> str | None:
@@ -209,6 +220,7 @@ class ExotelCall:
         self.language = "en"
         self.confirm: dict | None = None
         self._sale_done = False
+        self._opening = False
         self.turns: list[tuple[str, str]] = []
         self._turn = 0
         self._ignore_until = 0.0
@@ -243,6 +255,8 @@ class ExotelCall:
             )
 
     async def clear_playback(self) -> None:
+        if self._opening:
+            return
         self._turn += 1
         if self.stream_sid and not self.socket.closed:
             await self.socket.send_json({"event": "clear", "stream_sid": self.stream_sid})
@@ -273,7 +287,16 @@ class ExotelCall:
             language = pending.get("language") or "en"
             self.language = language if language in {"en", "hi", "kn"} else "en"
             logger.info("sale greeting for %s", self.phone or "unknown")
-            await self.speak(sale_opening(self.language, str(pending.get("reason") or "")))
+            self._opening = True
+            self._held = None
+            try:
+                await self.speak(sale_opening(self.language, str(pending.get("reason") or "")))
+            finally:
+                self._ignore_until = max(self._ignore_until, time.perf_counter()) + 1.0
+                self._held = None
+                self._cancel_task(self._reply_task)
+                self._cancel_task(self._partial_task)
+                self._opening = False
             return
         logger.info("generic greeting for %s", self.phone or "unknown")
         self.language = "en"
@@ -373,6 +396,9 @@ class ExotelCall:
 
     def _begin_reply(self, transcript: str, hint: str, final: bool = True) -> None:
         transcript = correct_transcript(transcript)
+        if self._opening or (self.confirm and not self._sale_done and _sale_echo(transcript)):
+            logger.info("ignored sale echo %s", transcript[:80])
+            return
         if _is_echo(transcript):
             logger.info("ignored echo %s", transcript[:80])
             return
@@ -425,7 +451,7 @@ class ExotelCall:
         self._begin_reply(transcript, hint, final=False)
 
     async def on_stt(self, event: dict) -> None:
-        if self._ending:
+        if self._ending or self._opening:
             return
         kind = event.get("event")
         if kind == "error":
