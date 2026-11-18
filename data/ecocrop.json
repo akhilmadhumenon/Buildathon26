@@ -1,0 +1,12 @@
+[
+  {"crop":"tomato","eco_name":"Tomato","scientific_name":"Lycopersicon esculentum M.","tmin":7,"topmn":20,"topmx":27,"tmax":35,"rmin":400,"ropmn":600,"ropmx":1300,"rmax":1800,"gmin":70,"gmax":150},
+  {"crop":"onion","eco_name":"Onion","scientific_name":"Allium cepa L. v cepa","tmin":4,"topmn":12,"topmx":25,"tmax":30,"rmin":300,"ropmn":350,"ropmx":600,"rmax":2800,"gmin":85,"gmax":175},
+  {"crop":"potato","eco_name":"Potato","scientific_name":"Solanum tuberosum L.","tmin":7,"topmn":15,"topmx":25,"tmax":30,"rmin":250,"ropmn":500,"ropmx":800,"rmax":2000,"gmin":90,"gmax":160},
+  {"crop":"chilli","eco_name":"Sweet pepper","scientific_name":"Capsicum annuum L.","tmin":8,"topmn":17,"topmx":30,"tmax":35,"rmin":500,"ropmn":600,"ropmx":1250,"rmax":1700,"gmin":60,"gmax":180},
+  {"crop":"banana","eco_name":"Banana","scientific_name":"Musa acuminata x M. balbis.","tmin":15,"topmn":25,"topmx":35,"tmax":40,"rmin":1000,"ropmn":1400,"ropmx":2400,"rmax":5000,"gmin":180,"gmax":365},
+  {"crop":"ragi","eco_name":"Finger millet","scientific_name":"Eleusine coracana (L)Gaertn","tmin":8,"topmn":18,"topmx":27,"tmax":35,"rmin":600,"ropmn":800,"ropmx":1100,"rmax":4300,"gmin":75,"gmax":180},
+  {"crop":"maize","eco_name":"Maize","scientific_name":"Zea mays L. s. mays","tmin":10,"topmn":18,"topmx":33,"tmax":47,"rmin":400,"ropmn":600,"ropmx":1200,"rmax":1800,"gmin":65,"gmax":365},
+  {"crop":"tur","eco_name":"Pigeon Pea","scientific_name":"Cajanus cajan (L.) Mill ssp","tmin":10,"topmn":18,"topmx":38,"tmax":45,"rmin":400,"ropmn":600,"ropmx":1500,"rmax":4000,"gmin":90,"gmax":365},
+  {"crop":"paddy","eco_name":"Rice, paddy (Indica)","scientific_name":"Oryza sativa L. s. indica","tmin":16,"topmn":25,"topmx":35,"tmax":38,"rmin":1000,"ropmn":1500,"ropmx":2000,"rmax":4000,"gmin":80,"gmax":200},
+  {"crop":"groundnut","eco_name":"Groundnut","scientific_name":"Arachis hypogaea L.","tmin":10,"topmn":22,"topmx":32,"tmax":45,"rmin":400,"ropmn":600,"ropmx":1500,"rmax":4000,"gmin":90,"gmax":150}
+]

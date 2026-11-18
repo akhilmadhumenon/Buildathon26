@@ -1,0 +1,6 @@
+.venv
+__pycache__
+*.pyc
+data/raw/_captcha.png
+data/*.db-journal
+.git

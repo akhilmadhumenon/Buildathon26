@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RaithaLine · FPO Aggregation Console</title>
+  <style>
+    :root {
+      --saffron: #e06a00;
+      --india-green: #146c2e;
+      --navy: #0a3161;
+      --navy-deep: #06264d;
+      --ink: #1b1b1b;
+      --muted: #3d4a57;
+      --bg: #eef1f4;
+      --card: #ffffff;
+      --line: #c5ced6;
+      --sell-bg: #e7f4ea;
+      --sell-ink: #0d4f1c;
+      --hold-bg: #fff6e0;
+      --hold-ink: #5c3b00;
+      --bad-bg: #fdecea;
+      --bad-ink: #7a1f1f;
+      --chart-ink: #1b1b1b;
+      --chart-muted: #3d4a57;
+      --chart-line: #8aa0b4;
+      --chart-dot: #0a3161;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Noto Sans", "Noto Sans Kannada", "Noto Sans Devanagari", "Kannada Sangam MN", "Kohinoor Devanagari", "Nirmala UI", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+    .skip {
+      position: absolute;
+      left: 8px;
+      top: -40px;
+      background: #fff;
+      color: var(--navy);
+      padding: 8px 12px;
+      z-index: 5;
+    }
+    .skip:focus { top: 8px; }
+    .tricolor { display: flex; height: 6px; }
+    .tricolor span { flex: 1; }
+    .tricolor span:nth-child(1) { background: #ff9933; }
+    .tricolor span:nth-child(2) { background: #ffffff; }
+    .tricolor span:nth-child(3) { background: #138808; }
+    .utility {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: var(--navy-deep);
+      color: #fff;
+      padding: 8px 24px;
+      font-size: 0.875rem;
+    }
+    .utility p { margin: 0; }
+    .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .tools button, .mast button, .tabs button, table button, form button {
+      font: inherit;
+      cursor: pointer;
+      min-height: 40px;
+    }
+    .tools button {
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      padding: 4px 10px;
+    }
+    .tools button[aria-pressed="true"] { background: #fff; color: var(--navy-deep); }
+    #as-of { margin-right: 8px; }
+    #sync-status { max-width: 240px; line-height: 1.3; }
+    .tools button:disabled { opacity: 0.55; cursor: progress; }
+    .lang {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      color: #fff;
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+    .lang select {
+      width: auto;
+      min-width: 7.5rem;
+      min-height: 40px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid #fff;
+    }
+    .mast {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      padding: 16px 24px 14px;
+    }
+    .brand { display: flex; gap: 14px; align-items: center; }
+    .mark { width: 44px; height: 44px; flex: none; }
+    .kicker {
+      margin: 0;
+      color: var(--navy);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: 1.75rem; font-weight: 700; color: var(--navy); line-height: 1.15; }
+    .brand p:last-child { margin: 2px 0 0; color: var(--muted); }
+    .crop-box { min-width: min(100%, 240px); }
+    label { display: block; font-size: 0.8125rem; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    select, input {
+      width: 100%;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid var(--navy);
+      padding: 8px 10px;
+      min-height: 40px;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 16px 24px 32px; }
+    .decision, .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 16px;
+    }
+    .decision { border-top: 4px solid var(--navy); }
+    h2 { margin: 0 0 12px; font-size: 1.125rem; color: var(--navy); }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
+      margin: 12px 0 8px;
+      border: 1px solid var(--line);
+    }
+    .stat { padding: 10px 12px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat span { display: block; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+    .stat strong {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 8px;
+      margin-top: 2px;
+      font-size: 1.35rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .delta { font-size: 0.8125rem; font-weight: 700; white-space: nowrap; }
+    .delta.good { color: var(--sell-ink); }
+    .delta.bad { color: var(--bad-ink); }
+    .delta.flat { color: var(--muted); }
+    .chart-wrap { position: relative; }
+    .chart-tip {
+      position: absolute;
+      z-index: 3;
+      max-width: 260px;
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--navy);
+      padding: 8px 10px;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      pointer-events: none;
+    }
+    .chart-tip[hidden] { display: none; }
+    .chart-tip strong { display: block; color: var(--navy); }
+    #chart:focus { outline: 3px solid var(--saffron); outline-offset: 2px; }
+    #chart circle.hot { stroke: var(--saffron); stroke-width: 2; }
+    .action {
+      background: var(--sell-bg);
+      color: var(--sell-ink);
+      border-left: 4px solid var(--india-green);
+      padding: 12px 14px;
+    }
+    .action.hold { background: var(--hold-bg); color: var(--hold-ink); border-left-color: var(--saffron); }
+    .action.unknown { background: var(--bad-bg); color: var(--bad-ink); border-left-color: var(--bad-ink); }
+    .fine { color: var(--muted); font-size: 0.875rem; }
+    .tabs {
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      margin-top: 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-bottom: 0;
+    }
+    .tabs button {
+      background: transparent;
+      color: var(--navy);
+      border: 0;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      padding: 12px 16px;
+      white-space: nowrap;
+    }
+    .tabs button[aria-selected="true"] {
+      border-bottom-color: var(--saffron);
+      font-weight: 700;
+      background: #fff8ef;
+    }
+    .panel { margin-bottom: 16px; }
+    .panel[hidden] { display: none; }
+    .steps { margin: 0 0 14px; padding-left: 1.2rem; }
+    .steps li { margin: 4px 0; }
+    form.gate { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto; gap: 10px; align-items: end; margin-top: 12px; }
+    form.gate button, table button {
+      background: var(--navy);
+      color: #fff;
+      border: 1px solid var(--navy);
+      padding: 8px 12px;
+    }
+    button.ghost { background: #fff; color: var(--navy); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+    caption { text-align: left; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    thead th { background: #f4f7fa; color: var(--navy); }
+    tbody tr:nth-child(even) { background: #f8fafb; }
+    svg { width: 100%; height: auto; background: #f7f9fb; border: 1px solid var(--line); }
+    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 8px 0 0; }
+    .metrics div { border: 1px solid var(--line); padding: 10px 12px; }
+    .metrics dt { color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+    .metrics dd { margin: 4px 0 0; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+    #gate-error:empty, #queue-error:empty { display: none; }
+    #gate-error, #queue-error { color: var(--bad-ink); font-weight: 700; }
+    footer {
+      background: var(--navy-deep);
+      color: #fff;
+      padding: 16px 24px 24px;
+      font-size: 0.875rem;
+    }
+    footer p { max-width: 1120px; margin: 8px auto; }
+    :focus-visible { outline: 3px solid var(--saffron); outline-offset: 2px; }
+    @media (max-width: 800px) {
+      .stats, .metrics, form.gate { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat { border-bottom: 1px solid var(--line); }
+      main { padding: 12px; }
+      .utility, .mast { padding-left: 12px; padding-right: 12px; }
+    }
+    @media (max-width: 520px) {
+      .stats, .metrics, form.gate { grid-template-columns: 1fr; }
+      .stat { border-right: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    html[data-contrast="high"] {
+      --ink: #000;
+      --muted: #000;
+      --bg: #fff;
+      --card: #fff;
+      --line: #000;
+      --navy: #000;
+      --sell-bg: #fff;
+      --sell-ink: #000;
+      --hold-bg: #ff0;
+      --hold-ink: #000;
+      --bad-bg: #ff0;
+      --bad-ink: #000;
+      --chart-ink: #000;
+      --chart-muted: #000;
+      --chart-line: #000;
+      --chart-dot: #000;
+    }
+    html[data-contrast="high"] .utility,
+    html[data-contrast="high"] .mast,
+    html[data-contrast="high"] footer { background: #000; color: #ff0; }
+    html[data-contrast="high"] h1,
+    html[data-contrast="high"] .kicker,
+    html[data-contrast="high"] .brand p,
+    html[data-contrast="high"] .utility p,
+    html[data-contrast="high"] #as-of { color: #ff0; }
+    html[data-contrast="high"] select,
+    html[data-contrast="high"] input,
+    html[data-contrast="high"] .tools button { background: #000; color: #ff0; border-color: #ff0; }
+    html[data-contrast="high"] .tools button[aria-pressed="true"] { background: #ff0; color: #000; }
+    html[data-contrast="high"] thead th,
+    html[data-contrast="high"] tbody tr:nth-child(even),
+    html[data-contrast="high"] svg { background: #fff; }
+    html[data-contrast="high"] .chart-tip { background: #ff0; color: #000; border-color: #000; }
+    html[data-contrast="high"] .chart-tip strong,
+    html[data-contrast="high"] .delta.good,
+    html[data-contrast="high"] .delta.bad,
+    html[data-contrast="high"] .delta.flat { color: #000; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main" data-i18n="skip">Skip to main content</a>
+  <div class="tricolor" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="utility">
+    <p data-i18n="utility">Karnataka · Farmer Producer Organisation</p>
+    <div class="tools">
+      <span id="as-of">Latest reported day loads with the commodity.</span>
+      <button type="button" id="sync" data-i18n="sync">Sync</button>
+      <span id="sync-status" role="status"></span>
+      <button type="button" id="size-down" aria-label="Smaller text">A−</button>
+      <button type="button" id="size-reset" aria-pressed="true" aria-label="Default text size">A</button>
+      <button type="button" id="size-up" aria-label="Larger text">A+</button>
+      <button type="button" id="contrast" aria-pressed="false" data-i18n="contrast">High contrast</button>
+      <label class="lang" for="lang"><span data-i18n="langLabel">Language</span>
+        <select id="lang">
+          <option value="en">English</option>
+          <option value="hi">हिन्दी</option>
+          <option value="kn">ಕನ್ನಡ</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  <header class="mast">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 44 44" aria-hidden="true">
+        <rect x="4" y="6" width="36" height="8" fill="#ff9933"/>
+        <rect x="4" y="18" width="36" height="8" fill="#ffffff" stroke="#0a3161"/>
+        <rect x="4" y="30" width="36" height="8" fill="#138808"/>
+      </svg>
+      <div>
+        <p class="kicker" data-i18n="kicker">Agriculture · Mandi desk</p>
+        <h1>RaithaLine</h1>
+        <p data-i18n="subtitle">FPO Aggregation Console</p>
+      </div>
+    </div>
+    <div class="crop-box">
+      <label for="crop" data-i18n="commodity">Commodity</label>
+      <select id="crop"></select>
+    </div>
+  </header>
+  <main id="main">
+    <section class="decision" aria-labelledby="decision-heading">
+      <h2 id="decision-heading" data-i18n="decision">Today’s advice</h2>
+      <div class="action" id="action" data-i18n="loading">Loading the mandi report.</div>
+      <div class="stats" id="stats"></div>
+      <p class="fine" id="delta-legend" data-i18n="deltaLegend">Arrows compare with the same week last year. Green is a better selling week: modal at least 5% higher, or arrivals under 60% of last year. Red is a softer modal, or a heavier arrival week.</p>
+      <p class="fine" id="grade"></p>
+    </section>
+
+    <div class="tabs" role="tablist" aria-label="Desk sections">
+      <button type="button" role="tab" id="tab-board" aria-controls="panel-board" aria-selected="true" tabindex="0"><span data-i18n="tabBoard">Board</span></button>
+      <button type="button" role="tab" id="tab-prices" aria-controls="panel-prices" aria-selected="false" tabindex="-1"><span data-i18n="tabPrices">Prices</span></button>
+      <button type="button" role="tab" id="tab-calls" aria-controls="panel-calls" aria-selected="false" tabindex="-1"><span data-i18n="tabCalls">Calls</span> <span id="calls-count"></span></button>
+      <button type="button" role="tab" id="tab-members" aria-controls="panel-members" aria-selected="false" tabindex="-1"><span data-i18n="tabMembers">Members</span></button>
+      <button type="button" role="tab" id="tab-climate" aria-controls="panel-climate" aria-selected="false" tabindex="-1"><span data-i18n="tabClimate">Climate</span></button>
+    </div>
+
+    <div class="panel" id="panel-board" role="tabpanel" aria-labelledby="tab-board">
+      <h2 data-i18n="morning">Morning board</h2>
+      <ol class="steps">
+        <li data-i18n="step1">Read today’s advice and the grade range above.</li>
+        <li data-i18n="step2">Enter the 7:00 AM gate if the mandi has opened. Leave it blank to stay on Agmarknet.</li>
+        <li data-i18n="step3">Open Calls and approve the batch. The phone call asks the farmer. It does not dispatch produce.</li>
+      </ol>
+      <p class="fine" id="hold-rule" data-i18n="holdRule">A soft price is two different jobs. Tomato and banana: delay harvest and leave the fruit on the vine for 3 to 4 days. Picked fruit lasts 3 to 5 days without cold storage, so a harvested load is a sell. Ragi, tur, maize, dry chilli, groundnut, paddy, onion, and potato: store in a dry godown.</p>
+      <p class="fine" id="citation"></p>
+      <form class="gate" id="gate-form">
+        <label for="gate-modal"><span data-i18n="gateModal">Morning gate modal (₹/qtl)</span><input id="gate-modal" inputmode="decimal" required /></label>
+        <label for="gate-min"><span data-i18n="gateMin">Low grade (₹/qtl)</span><input id="gate-min" inputmode="decimal" /></label>
+        <label for="gate-max"><span data-i18n="gateMax">High grade (₹/qtl)</span><input id="gate-max" inputmode="decimal" /></label>
+        <button type="submit" data-i18n="saveGate">Save 7:00 AM gate</button>
+        <button type="button" class="ghost" id="gate-clear" data-i18n="useAgmarknet">Use Agmarknet</button>
+      </form>
+      <p id="gate-error" role="alert"></p>
+      <p class="fine" data-i18n="gateNote">Agmarknet often lands 24 to 48 hours late and can skip a weekend. The gate price replaces that modal for advice and for the calls approved after it. A nearby-mandi call is an FPO pooled trip. It does not ask a farmer to leave a commission agent who advanced input credit.</p>
+    </div>
+
+    <div class="panel" id="panel-prices" role="tabpanel" aria-labelledby="tab-prices" hidden>
+      <h2 data-i18n="pricesHeading">Price and arrivals</h2>
+      <div class="chart-wrap">
+        <svg id="chart" viewBox="0 0 680 300" role="img" tabindex="0" aria-describedby="chart-tip" aria-label="Modal price in rupees per quintal against arrivals in tonnes"></svg>
+        <div id="chart-tip" class="chart-tip" role="tooltip" hidden></div>
+      </div>
+      <p class="fine" data-i18n="eachDot">Each dot is one reported day.</p>
+      <p class="fine" data-i18n="chartHint">Rest the pointer on a dot, or focus the chart and use the arrow keys.</p>
+      <div id="model-card">
+        <h2 data-i18n="modelHeading">Tomato, 7-day check</h2>
+        <div id="model"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-calls" role="tabpanel" aria-labelledby="tab-calls" hidden>
+      <h2 data-i18n="callsHeading">Calls</h2>
+      <p class="fine" data-i18n="callsNote">Proposed calls wait here. Held-back farmers are not dialed. Approve the morning batch only after the gate price is in. The phone call asks the farmer. It does not dispatch produce.</p>
+      <p id="queue-error" role="alert"></p>
+      <div class="table-wrap" id="queue"></div>
+    </div>
+
+    <div class="panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" hidden>
+      <h2 data-i18n="membersHeading">Members</h2>
+      <p class="fine" data-i18n="membersNote">Farmers on this desk. Opt-in, sowing, and the last call.</p>
+      <div class="table-wrap" id="farmers"></div>
+    </div>
+
+    <div class="panel" id="panel-climate" role="tabpanel" aria-labelledby="tab-climate" hidden>
+      <h2 data-i18n="climateHeading">2041–2060 screen</h2>
+      <p class="fine" id="climate-note"></p>
+      <div id="climate"></div>
+    </div>
+  </main>
+  <div class="tricolor" aria-hidden="true"><span></span><span></span><span></span></div>
+  <footer>
+    <p data-i18n="footer1">RaithaLine is an FPO desk for this hackathon. It is not a Government of Karnataka website.</p>
+    <p data-i18n="footer2">Prices are rupees per quintal from the Agmarknet date-wise report, unless a morning gate is saved. Arrivals are metric tonnes. Suitability points run from 0 to 100.</p>
+  </footer>
+  <script>
+    const cropSelect = document.querySelector("#crop");
+    const money = (value) => value == null ? "—" : "₹" + Math.round(value).toLocaleString("en-IN");
+    const tonnes = (value) => value == null ? "—" : value.toFixed(1) + " t";
+    const root = document.documentElement;
+    const sizes = ["15px", "16px", "18px"];
+    let sizeIndex = 1;
+
+    const CROPS = {
+      tomato: { hi: "टमाटर", kn: "ಟೊಮೇಟೊ" },
+      onion: { hi: "प्याज", kn: "ಈರುಳ್ಳಿ" },
+      potato: { hi: "आलू", kn: "ಆಲೂಗಡ್ಡೆ" },
+      chilli: { hi: "सूखी मिर्च", kn: "ಒಣ ಮೆಣಸಿನಕಾಯಿ" },
+      banana: { hi: "केला", kn: "ಬಾಳೆಹಣ್ಣು" },
+      ragi: { hi: "रागी", kn: "ರಾಗಿ" },
+      maize: { hi: "मक्का", kn: "ಮೆಕ್ಕೆಜೋಳ" },
+      tur: { hi: "तुअर", kn: "ತೊಗರಿ" },
+      paddy: { hi: "धान", kn: "ಭತ್ತ" },
+      groundnut: { hi: "मूँगफली", kn: "ಕಡಲೆಕಾಯಿ" }
+    };
+    const PLACES = {
+      Kolar: { hi: "कोलार", kn: "ಕೋಲಾರ" },
+      Kalaburagi: { hi: "कलाबुर्गी", kn: "ಕಲಬುರಗಿ" },
+      Dharwad: { hi: "धारवाड़", kn: "ಧಾರವಾಡ" }
+    };
+    const MEMBER_NAMES = {
+      "Kolar tomato grower": { hi: "कोलार टमाटर किसान", kn: "ಕೋಲಾರ ಟೊಮೇಟೊ ರೈತ" },
+      "Hubballi onion grower": { hi: "हुबली प्याज किसान", kn: "ಹುಬ್ಬಳ್ಳಿ ಈರುಳ್ಳಿ ರೈತ" },
+      "Hubballi onion grower in transit": { hi: "हुबली प्याज किसान, रास्ते में", kn: "ಹುಬ್ಬಳ್ಳಿ ಈರುಳ್ಳಿ ರೈತ, ದಾರಿಯಲ್ಲಿ" }
+    };
+    const COPY = {
+      en: {
+        docTitle: "RaithaLine · FPO Aggregation Console",
+        skip: "Skip to main content",
+        utility: "Karnataka · Farmer Producer Organisation",
+        langLabel: "Language",
+        contrast: "High contrast",
+        sync: "Sync",
+        syncing: "Fetching {crop} {when} ({done}/{total})",
+        syncDone: "Agmarknet updated, {n} months. Latest day {date}.",
+        syncPartial: "Updated {n} months. {failed} could not be read. Latest day {date}.",
+        syncFailed: "Agmarknet could not be read. {detail}",
+        syncReader: "This server cannot read the Agmarknet check image.",
+        sizeDown: "Smaller text",
+        sizeReset: "Default text size",
+        sizeUp: "Larger text",
+        asOf: "Latest reported day: {date}",
+        asOfNone: "No reported day on this series.",
+        kicker: "Agriculture · Mandi desk",
+        subtitle: "FPO Aggregation Console",
+        commodity: "Commodity",
+        decision: "Today’s advice",
+        loading: "Loading the mandi report.",
+        tablist: "Desk sections",
+        tabBoard: "Board",
+        tabPrices: "Prices",
+        tabCalls: "Calls",
+        tabMembers: "Members",
+        tabClimate: "Climate",
+        morning: "Morning board",
+        step1: "Read today’s advice and the grade range above.",
+        step2: "Enter the 7:00 AM gate if the mandi has opened. Leave it blank to stay on Agmarknet.",
+        step3: "Open Calls and approve the batch. The phone call asks the farmer. It does not dispatch produce.",
+        holdRule: "A soft price is two different jobs. Tomato and banana: delay harvest and leave the fruit on the vine for 3 to 4 days. Picked fruit lasts 3 to 5 days without cold storage, so a harvested load is a sell. Ragi, tur, maize, dry chilli, groundnut, paddy, onion, and potato: store in a dry godown.",
+        gateModal: "Morning gate modal (₹/qtl)",
+        gateMin: "Low grade (₹/qtl)",
+        gateMax: "High grade (₹/qtl)",
+        saveGate: "Save 7:00 AM gate",
+        useAgmarknet: "Use Agmarknet",
+        gateNote: "Agmarknet often lands 24 to 48 hours late and can skip a weekend. The gate price replaces that modal for advice and for the calls approved after it. A nearby-mandi call is an FPO pooled trip. It does not ask a farmer to leave a commission agent who advanced input credit.",
+        pricesHeading: "Price and arrivals",
+        eachDot: "Each dot is one reported day.",
+        chartLabel: "Modal price in rupees per quintal against arrivals in tonnes",
+        noPoints: "No arrivals to plot.",
+        axisArrivals: "Arrivals (tonnes)",
+        axisPrice: "Modal price (₹ per quintal)",
+        chartHint: "Rest the pointer on a dot, or focus the chart and use the arrow keys.",
+        tipModal: "Modal {price}",
+        tipArrivals: "Arrivals {tonnes}",
+        tipRange: "That day's grade: {low} to {high}",
+        tipLatest: "Latest reported day",
+        deltaHigher: "higher",
+        deltaLower: "lower",
+        deltaLevel: "level",
+        deltaTighter: "tighter",
+        deltaHeavier: "heavier",
+        deltaEasing: "easing",
+        deltaLegend: "Arrows compare with the same week last year. Green is a better selling week: modal at least 5% higher, or arrivals under 60% of last year. Red is a softer modal, or a heavier arrival week.",
+        modelHeading: "Tomato, 7-day check",
+        modelMissing: "The 7-day model is not available for this series.",
+        modelBeat: "Lower error than both baselines on the holdout.",
+        modelMiss: "Does not beat both baselines on the holdout.",
+        modelRange: "{start} to {end}, {n} origins.",
+        wapeModel: "Model",
+        wapeToday: "Tomorrow equals today",
+        wapeYear: "Same week last year",
+        callsHeading: "Calls",
+        callsNote: "Proposed calls wait here. Held-back farmers are not dialed. Approve the morning batch only after the gate price is in. The phone call asks the farmer. It does not dispatch produce.",
+        callsFail: "The call queue did not load.",
+        noCalls: "No calls in the queue.",
+        callCaption: "Morning call batch",
+        colFarmer: "Farmer",
+        colStatus: "Status",
+        colAction: "Action",
+        approve: "Approve",
+        holdBack: "Hold back",
+        callback: "Call again",
+        callbackLead: "Follow-up to the same farmer.",
+        callbackEarlier: "Earlier call: {summary}",
+        callbackQueued: "This farmer is already waiting to be dialed.",
+        callbackFailed: "The follow-up call was not queued.",
+        heldBack: "Held back: {reason}.",
+        membersHeading: "Members",
+        membersNote: "Farmers on this desk. Opt-in, sowing, and the last call.",
+        membersFail: "The member list did not load.",
+        memberCaption: "{n} members on this desk",
+        colMember: "Member",
+        colPhone: "Phone",
+        colLanguage: "Language",
+        colPlace: "Place",
+        colSowing: "Sowing",
+        colLast: "Last call",
+        optIn: "Opt-in {value}",
+        yes: "yes",
+        no: "no",
+        noSowing: "No sowing yet",
+        sownLine: "{crop}, sown {date}",
+        harvested: "harvested",
+        inTransit: "in transit",
+        noCall: "No earlier call.",
+        earlierCall: "Earlier call confirmed the same tomato sowing. {mandi} modal was Rs {modal} per quintal on {date}.",
+        climateHeading: "2041–2060 screen",
+        climateNote: "{district}: WorldClim 2041–2060 minus 1970–2000, mean of MIROC6 and MPI-ESM1-2-HR. Moderate +{moderate}°C, rain ×{rainModerate}. High +{high}°C, rain ×{rainHigh}. Added to the 2015–2024 Open-Meteo normal.",
+        largestDrop: "Largest drop: {list}.",
+        largestGain: "Largest gain: {list}.",
+        none: "none",
+        pointsWord: "points",
+        climateCaption: "Suitability scores for {district}, sorted by the high-screen change",
+        colCrop: "Crop",
+        colToday: "Today",
+        colModerate: "Moderate 2041–2060",
+        colHigh: "High 2041–2060",
+        colChange: "High minus today (points)",
+        climateFine: "Points on a 0–100 suitability score: 60% temperature fit and 40% rainfall fit against the FAO EcoCrop bands. The change is the high 2041–2060 screen minus today.",
+        footer1: "RaithaLine is an FPO desk for this hackathon. It is not a Government of Karnataka website.",
+        footer2: "Prices are rupees per quintal from the Agmarknet date-wise report, unless a morning gate is saved. Arrivals are metric tonnes. Suitability points run from 0 to 100.",
+        statGate: "Morning gate",
+        statModal: "Agmarknet modal",
+        statArrivals: "7-day arrivals",
+        statSeasonal: "Same week last year",
+        statSeasonalArrivals: "Seasonal arrivals",
+        act_sell_now: "Sell now",
+        act_sell_nearby: "FPO sell nearby",
+        act_delay_harvest: "Delay harvest (leave on vine 3–4 days)",
+        act_store: "Store in a dry godown",
+        act_unknown: "Unknown",
+        reportedAt: "at {mandi}, reported {date}",
+        shortageYes: "Shortage rule is met.",
+        shortageNo: "Shortage rule is not met.",
+        shortageUnknown: "Shortage not scored.",
+        seasonalUp: "Today's modal is at least 5 percent above the same week last year.",
+        seasonalDown: "Today's modal is not 5 percent above the same week last year.",
+        forecastUnder: "The 7-day forecast is at least 3 percent under today's modal.",
+        forecastOver: "The 7-day forecast is at least 3 percent over today's modal.",
+        forecastFlat: "The 7-day forecast is within 3 percent of today's modal.",
+        noSeasonal: "Same week last year is missing, so there is no sell or hold call.",
+        noSeries: "No mandi series is loaded for this crop.",
+        picked: "This load is already harvested. Tomato and banana last 3 to 5 days without cold storage. Sell it. Do not hold picked fruit.",
+        vine: "Delay harvest and leave the fruit on the vine for 3 to 4 days. Picked tomato and banana last 3 to 5 days without cold storage, so a harvested load is a sell, not a store.",
+        godown: "Store in a dry godown.",
+        nearbyReason: "{mandi} modal is Rs {modal}. After Rs {cost} per quintal for about 70 km, Rs 100 still remains. The FPO can pool the load and book that trip. A farmer who has taken input credit from a local commission agent should not divert alone.",
+        gradeModal: "Most sales were at Rs {modal} per quintal.",
+        gradeRange: "Most sales were at Rs {modal} per quintal, ranging from Rs {low} to Rs {high} depending on grade.",
+        citation: "Agmarknet date-wise commodity report for Karnataka, api.agmarknet.gov.in. Prices are Rs per quintal. Arrivals are metric tonnes. Market: {mandi}. Latest reported day: {date}.",
+        gateCitation: "The modal used for advice is the FPO morning gate price entered at {time}. Agmarknet prints often lag 24 to 48 hours and can miss a weekend.",
+        status_proposed: "proposed",
+        status_approved: "approved",
+        status_suppressed: "suppressed",
+        status_called: "called",
+        reason_in_transit: "in transit",
+        reason_sale_complete: "sale complete",
+        reason_rain: "heavy rain",
+        reason_admin: "held by the desk",
+        errCrop: "Unknown crop.",
+        errModal: "The gate modal has to be above zero.",
+        errRange: "The low grade cannot sit above the high grade.",
+        errGate: "The gate price was not saved.",
+        lang_en: "English",
+        lang_hi: "हिन्दी",
+        lang_kn: "ಕನ್ನಡ"
+      },
+      hi: {
+        docTitle: "राइथलाइन · एफपीओ संग्रह कंसोल",
+        skip: "मुख्य सामग्री पर जाएँ",
+        utility: "कर्नाटक · किसान उत्पादक संगठन",
+        langLabel: "भाषा",
+        contrast: "उच्च कंट्रास्ट",
+        sync: "सिंक",
+        syncing: "{crop} {when} ला रहे हैं ({done}/{total})",
+        syncDone: "एगमार्कनेट अपडेट, {n} महीने. आखिरी दिन {date}.",
+        syncPartial: "{n} महीने अपडेट. {failed} नहीं पढ़े जा सके. आखिरी दिन {date}.",
+        syncFailed: "एगमार्कनेट नहीं पढ़ा जा सका. {detail}",
+        syncReader: "यह सर्वर एगमार्कनेट की जाँच छवि नहीं पढ़ सकता.",
+        sizeDown: "छोटा अक्षर",
+        sizeReset: "सामान्य अक्षर",
+        sizeUp: "बड़ा अक्षर",
+        asOf: "आखिरी रिपोर्ट का दिन: {date}",
+        asOfNone: "इस श्रृंखला में रिपोर्ट का दिन नहीं है.",
+        kicker: "कृषि · मंडी डेस्क",
+        subtitle: "एफपीओ संग्रह कंसोल",
+        commodity: "फसल",
+        decision: "आज की सलाह",
+        loading: "मंडी रिपोर्ट आ रही है.",
+        tablist: "डेस्क के भाग",
+        tabBoard: "बोर्ड",
+        tabPrices: "भाव",
+        tabCalls: "कॉल",
+        tabMembers: "सदस्य",
+        tabClimate: "जलवायु",
+        morning: "सुबह का बोर्ड",
+        step1: "ऊपर आज की सलाह और ग्रेड की सीमा पढ़ें.",
+        step2: "मंडी खुल गई हो तो सुबह 7:00 का गेट भाव भरें. खाली छोड़ें तो एगमार्कनेट पर रहेंगे.",
+        step3: "कॉल खोलें और बैच मंजूर करें. फोन किसान से पूछता है. माल नहीं भेजता.",
+        holdRule: "कम भाव पर दो अलग काम हैं. टमाटर और केला: तुड़ाई 3 से 4 दिन रोकें, फल बेल पर रहने दें. तोड़ी हुई फसल बिना ठंडे भंडार के 3 से 5 दिन चलती है, इसलिए तोड़ा हुआ माल बेचें. रागी, तुअर, मक्का, सूखी मिर्च, मूँगफली, धान, प्याज और आलू: सूखे गोदाम में रखें.",
+        gateModal: "सुबह का गेट भाव (₹/क्विंटल)",
+        gateMin: "निचला ग्रेड (₹/क्विंटल)",
+        gateMax: "ऊपरी ग्रेड (₹/क्विंटल)",
+        saveGate: "सुबह 7:00 का गेट सहेजें",
+        useAgmarknet: "एगमार्कनेट रखें",
+        gateNote: "एगमार्कनेट अक्सर 24 से 48 घंटे देर से आता है और सप्ताहांत छूट सकता है. गेट भाव सलाह और उसके बाद मंजूर कॉल के लिए वही मॉडल बदल देता है. पास की मंडी वाली कॉल एफपीओ की साझा यात्रा है. जिस किसान ने स्थानीय दलाल से इनपुट उधार लिया हो, उसे अकेले मंडी बदलने को न कहें.",
+        pricesHeading: "भाव और आवक",
+        eachDot: "हर बिंदु एक रिपोर्ट का दिन है.",
+        chartLabel: "आवक टन में, मॉडल भाव रुपये प्रति क्विंटल",
+        noPoints: "दिखाने के लिए आवक नहीं है.",
+        axisArrivals: "आवक (टन)",
+        axisPrice: "मॉडल भाव (₹ प्रति क्विंटल)",
+        chartHint: "बिंदु पर सूचक रखें, या चार्ट चुनकर तीर कुंजी चलाएँ.",
+        tipModal: "मॉडल {price}",
+        tipArrivals: "आवक {tonnes}",
+        tipRange: "उस दिन का ग्रेड: {low} से {high}",
+        tipLatest: "आखिरी रिपोर्ट का दिन",
+        deltaHigher: "ऊपर",
+        deltaLower: "नीचे",
+        deltaLevel: "बराबर",
+        deltaTighter: "कम आवक",
+        deltaHeavier: "ज्यादा आवक",
+        deltaEasing: "थोड़ी कम",
+        deltaLegend: "तीर पिछले साल के इसी सप्ताह से तुलना करते हैं. हरा बेचने के लिए बेहतर सप्ताह है: मॉडल कम से कम 5% ऊपर, या आवक पिछले साल के 60% से कम. लाल नरम मॉडल है, या भारी आवक वाला सप्ताह.",
+        modelHeading: "टमाटर, 7 दिन की जाँच",
+        modelMissing: "इस श्रृंखला के लिए 7 दिन का मॉडल नहीं है.",
+        modelBeat: "होल्डआउट पर दोनों आधारों से कम त्रुटि.",
+        modelMiss: "होल्डआउट पर दोनों आधारों को नहीं हराता.",
+        modelRange: "{start} से {end}, {n} दिन.",
+        wapeModel: "मॉडल",
+        wapeToday: "कल बराबर आज",
+        wapeYear: "पिछले साल का यही सप्ताह",
+        callsHeading: "कॉल",
+        callsNote: "प्रस्तावित कॉल यहीं रुकती हैं. रोके गए किसानों को फोन नहीं जाता. गेट भाव आने के बाद सुबह का बैच मंजूर करें. फोन किसान से पूछता है. माल नहीं भेजता.",
+        callsFail: "कॉल सूची नहीं खुली.",
+        noCalls: "कतार में कोई कॉल नहीं.",
+        callCaption: "सुबह का कॉल बैच",
+        colFarmer: "किसान",
+        colStatus: "स्थिति",
+        colAction: "कार्रवाई",
+        approve: "मंजूर करें",
+        holdBack: "रोकें",
+        callback: "फिर कॉल करें",
+        callbackLead: "उसी किसान को दोबारा कॉल.",
+        callbackEarlier: "पिछली कॉल: {summary}",
+        callbackQueued: "यह किसान पहले से डायल सूची में है.",
+        callbackFailed: "दोबारा कॉल नहीं जुड़ी.",
+        heldBack: "रोका गया: {reason}.",
+        membersHeading: "सदस्य",
+        membersNote: "इस डेस्क के किसान. सहमति, बुवाई, और पिछली कॉल.",
+        membersFail: "सदस्य सूची नहीं खुली.",
+        memberCaption: "इस डेस्क पर {n} सदस्य",
+        colMember: "सदस्य",
+        colPhone: "फोन",
+        colLanguage: "भाषा",
+        colPlace: "जगह",
+        colSowing: "बुवाई",
+        colLast: "पिछली कॉल",
+        optIn: "सहमति {value}",
+        yes: "हाँ",
+        no: "नहीं",
+        noSowing: "अभी बुवाई नहीं",
+        sownLine: "{crop}, बुवाई {date}",
+        harvested: "कटाई हो चुकी",
+        inTransit: "रास्ते में",
+        noCall: "पहले कोई कॉल नहीं.",
+        earlierCall: "पिछली कॉल में टमाटर की वही बुवाई पक्की हुई. {mandi} का मॉडल भाव {date} को ₹{modal} प्रति क्विंटल था.",
+        climateHeading: "2041–2060 जाँच",
+        climateNote: "{district}: वर्ल्डकलाइम 2041–2060 घटाव 1970–2000, MIROC6 और MPI-ESM1-2-HR का औसत. मध्यम +{moderate}°C, बारिश ×{rainModerate}. अधिक +{high}°C, बारिश ×{rainHigh}. इसे 2015–2024 ओपन-मेटियो सामान्य में जोड़ा गया है.",
+        largestDrop: "सबसे बड़ी गिरावट: {list}.",
+        largestGain: "सबसे बड़ा लाभ: {list}.",
+        none: "कोई नहीं",
+        pointsWord: "अंक",
+        climateCaption: "{district} के उपयुक्तता अंक, अधिक स्क्रीन के बदलाव के क्रम में",
+        colCrop: "फसल",
+        colToday: "आज",
+        colModerate: "मध्यम 2041–2060",
+        colHigh: "अधिक 2041–2060",
+        colChange: "अधिक घटाव आज (अंक)",
+        climateFine: "0 से 100 उपयुक्तता अंक: 60% तापमान और 40% वर्षा, एफएओ इकोक्रॉप सीमाओं पर. बदलाव अधिक 2041–2060 जाँच घटाव आज है.",
+        footer1: "राइथलाइन इस हैकाथॉन का एफपीओ डेस्क है. यह कर्नाटक सरकार की वेबसाइट नहीं है.",
+        footer2: "भाव रुपये प्रति क्विंटल हैं, एगमार्कनेट की तारीख-वार रिपोर्ट से, जब तक सुबह का गेट सहेजा न जाए. आवक मीट्रिक टन में है. उपयुक्तता अंक 0 से 100 हैं.",
+        statGate: "सुबह का गेट",
+        statModal: "एगमार्कनेट मॉडल",
+        statArrivals: "7 दिन की आवक",
+        statSeasonal: "पिछले साल का यही सप्ताह",
+        statSeasonalArrivals: "मौसमी आवक",
+        act_sell_now: "अभी बेचें",
+        act_sell_nearby: "एफपीओ पास की मंडी",
+        act_delay_harvest: "तुड़ाई रोकें (3–4 दिन बेल पर छोड़ें)",
+        act_store: "सूखे गोदाम में रखें",
+        act_unknown: "पता नहीं",
+        reportedAt: "{mandi} में, रिपोर्ट {date}",
+        shortageYes: "कमी का नियम पूरा होता है.",
+        shortageNo: "कमी का नियम पूरा नहीं होता.",
+        shortageUnknown: "कमी की जाँच नहीं हुई.",
+        seasonalUp: "आज का मॉडल पिछले साल के इसी सप्ताह से कम से कम 5 प्रतिशत ऊपर है.",
+        seasonalDown: "आज का मॉडल पिछले साल के इसी सप्ताह से 5 प्रतिशत ऊपर नहीं है.",
+        forecastUnder: "7 दिन का पूर्वानुमान आज के मॉडल से कम से कम 3 प्रतिशत नीचे है.",
+        forecastOver: "7 दिन का पूर्वानुमान आज के मॉडल से कम से कम 3 प्रतिशत ऊपर है.",
+        forecastFlat: "7 दिन का पूर्वानुमान आज के मॉडल के 3 प्रतिशत के अंदर है.",
+        noSeasonal: "पिछले साल का यही सप्ताह नहीं मिला, इसलिए बेचने या रखने की सलाह नहीं.",
+        noSeries: "इस फसल की मंडी श्रृंखला लदी नहीं है.",
+        picked: "यह माल कट चुका है. टमाटर और केला बिना ठंडे भंडार के 3 से 5 दिन चलते हैं. बेच दें. तोड़ा हुआ फल न रखें.",
+        vine: "तुड़ाई 3 से 4 दिन रोकें और फल बेल पर रहने दें. तोड़ा टमाटर और केला बिना ठंडे भंडार के 3 से 5 दिन चलता है, इसलिए कटा माल बेचें, गोदाम में न रखें.",
+        godown: "सूखे गोदाम में रखें.",
+        nearbyReason: "{mandi} का मॉडल ₹{modal} है. करीब 70 किमी के लिए ₹{cost} प्रति क्विंटल ढुलाई के बाद भी ₹100 बचता है. एफपीओ माल इकट्ठा करके वह यात्रा बुक कर सकता है. जिस किसान ने स्थानीय दलाल से इनपुट उधार लिया हो, उसे अकेले मंडी नहीं बदलनी चाहिए.",
+        gradeModal: "ज्यादातर माल ₹{modal} प्रति क्विंटल बिका.",
+        gradeRange: "ज्यादातर माल ₹{modal} प्रति क्विंटल बिका, ग्रेड के हिसाब से ₹{low} से ₹{high} तक.",
+        citation: "कर्नाटक की एगमार्कनेट तारीख-वार रिपोर्ट, api.agmarknet.gov.in. भाव रुपये प्रति क्विंटल. आवक मीट्रिक टन. मंडी: {mandi}. आखिरी रिपोर्ट का दिन: {date}.",
+        gateCitation: "सलाह में लगा मॉडल एफपीओ का सुबह का गेट भाव है, {time} पर भरा गया. एगमार्कनेट की पर्ची अक्सर 24 से 48 घंटे देर से आती है और सप्ताहांत छूट सकता है.",
+        status_proposed: "प्रस्तावित",
+        status_approved: "मंजूर",
+        status_suppressed: "रोका गया",
+        status_called: "कॉल हो चुकी",
+        reason_in_transit: "रास्ते में",
+        reason_sale_complete: "बिक्री पूरी",
+        reason_rain: "भारी बारिश",
+        reason_admin: "डेस्क ने रोका",
+        errCrop: "यह फसल सूची में नहीं है.",
+        errModal: "गेट भाव शून्य से ऊपर होना चाहिए.",
+        errRange: "निचला ग्रेड ऊपरी ग्रेड से ऊपर नहीं हो सकता.",
+        errGate: "गेट भाव सहेजा नहीं गया.",
+        lang_en: "English",
+        lang_hi: "हिन्दी",
+        lang_kn: "ಕನ್ನಡ"
+      },
+      kn: {
+        docTitle: "ರೈತಲೈನ್ · ಎಫ್‌ಪಿಒ ಒಟ್ಟುಗೂಡಿಸುವ ಡೆಸ್ಕ್",
+        skip: "ಮುಖ್ಯ ವಿಷಯಕ್ಕೆ ಹೋಗಿ",
+        utility: "ಕರ್ನಾಟಕ · ರೈತ ಉತ್ಪಾದಕ ಸಂಸ್ಥೆ",
+        langLabel: "ಭಾಷೆ",
+        contrast: "ಹೆಚ್ಚು ವೈರುಧ್ಯ",
+        sync: "ಸಿಂಕ್",
+        syncing: "{crop} {when} ತರಲಾಗುತ್ತಿದೆ ({done}/{total})",
+        syncDone: "ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ನವೀಕರಣ, {n} ತಿಂಗಳು. ಕೊನೆಯ ದಿನ {date}.",
+        syncPartial: "{n} ತಿಂಗಳು ನವೀಕರಣ. {failed} ಓದಲಾಗಲಿಲ್ಲ. ಕೊನೆಯ ದಿನ {date}.",
+        syncFailed: "ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ಓದಲಾಗಲಿಲ್ಲ. {detail}",
+        syncReader: "ಈ ಸರ್ವರ್ ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ಪರಿಶೀಲನಾ ಚಿತ್ರವನ್ನು ಓದಲು ಆಗುವುದಿಲ್ಲ.",
+        sizeDown: "ಸಣ್ಣ ಅಕ್ಷರ",
+        sizeReset: "ಸಾಮಾನ್ಯ ಅಕ್ಷರ",
+        sizeUp: "ದೊಡ್ಡ ಅಕ್ಷರ",
+        asOf: "ಕೊನೆಯ ವರದಿ ದಿನ: {date}",
+        asOfNone: "ಈ ಸರಣಿಯಲ್ಲಿ ವರದಿ ದಿನವಿಲ್ಲ.",
+        kicker: "ಕೃಷಿ · ಮಂಡಿ ಡೆಸ್ಕ್",
+        subtitle: "ಎಫ್‌ಪಿಒ ಒಟ್ಟುಗೂಡಿಸುವ ಡೆಸ್ಕ್",
+        commodity: "ಬೆಳೆ",
+        decision: "ಇಂದಿನ ಸಲಹೆ",
+        loading: "ಮಂಡಿ ವರದಿ ಬರುತ್ತಿದೆ.",
+        tablist: "ಡೆಸ್ಕ್ ವಿಭಾಗಗಳು",
+        tabBoard: "ಬೋರ್ಡ್",
+        tabPrices: "ಬೆಲೆ",
+        tabCalls: "ಕರೆ",
+        tabMembers: "ಸದಸ್ಯರು",
+        tabClimate: "ಹವಾಮಾನ",
+        morning: "ಬೆಳಗಿನ ಬೋರ್ಡ್",
+        step1: "ಮೇಲಿನ ಇಂದಿನ ಸಲಹೆ ಮತ್ತು ದರ್ಜೆಯ ವ್ಯಾಪ್ತಿ ಓದಿ.",
+        step2: "ಮಂಡಿ ತೆರೆದಿದ್ದರೆ ಬೆಳಿಗ್ಗೆ 7:00 ರ ಗೇಟ್ ದರ ಬರೆಯಿರಿ. ಖಾಲಿ ಬಿಟ್ಟರೆ ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್‌ನಲ್ಲೇ ಇರುತ್ತದೆ.",
+        step3: "ಕರೆ ತೆರೆಯಿರಿ ಮತ್ತು ತಂಡವನ್ನು ಅನುಮೋದಿಸಿ. ಫೋನ್ ರೈತನನ್ನು ಕೇಳುತ್ತದೆ. ಸರಕು ಕಳುಹಿಸುವುದಿಲ್ಲ.",
+        holdRule: "ಕಡಿಮೆ ಬೆಲೆಗೆ ಎರಡು ಬೇರೆ ಕೆಲಸ. ಟೊಮೇಟೊ ಮತ್ತು ಬಾಳೆಹಣ್ಣು: ಕೊಯ್ಲು 3 ರಿಂದ 4 ದಿನ ತಡೆಹಿಡಿದು ಹಣ್ಣನ್ನು ಬಳ್ಳಿಯ ಮೇಲೆ ಬಿಡಿ. ಕೊಯ್ದ ಬೆಳೆ ತಣ್ಣಗಿನ ಉಗ್ರಾಣವಿಲ್ಲದೆ 3 ರಿಂದ 5 ದಿನ ಇರುತ್ತದೆ, ಆದ್ದರಿಂದ ಕೊಯ್ದ ಸರಕನ್ನು ಮಾರಾಟ ಮಾಡಿ. ರಾಗಿ, ತೊಗರಿ, ಮೆಕ್ಕೆಜೋಳ, ಒಣ ಮೆಣಸಿನಕಾಯಿ, ಕಡಲೆಕಾಯಿ, ಭತ್ತ, ಈರುಳ್ಳಿ ಮತ್ತು ಆಲೂಗಡ್ಡೆ: ಒಣ ಗೋದಾಮಿನಲ್ಲಿ ಇಡಿ.",
+        gateModal: "ಬೆಳಗಿನ ಗೇಟ್ ದರ (₹/ಕ್ವಿಂಟಾಲ್)",
+        gateMin: "ಕೆಳ ದರ್ಜೆ (₹/ಕ್ವಿಂಟಾಲ್)",
+        gateMax: "ಮೇಲ್ ದರ್ಜೆ (₹/ಕ್ವಿಂಟಾಲ್)",
+        saveGate: "ಬೆಳಿಗ್ಗೆ 7:00 ರ ಗೇಟ್ ಉಳಿಸಿ",
+        useAgmarknet: "ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ಇರಿಸಿ",
+        gateNote: "ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ಹಲವು ಬಾರಿ 24 ರಿಂದ 48 ಗಂಟೆ ತಡವಾಗಿ ಬರುತ್ತದೆ ಮತ್ತು ವಾರಾಂತ್ಯ ಬಿಟ್ಟುಹೋಗಬಹುದು. ಗೇಟ್ ದರ ಸಲಹೆಗೆ ಮತ್ತು ಅದರ ನಂತರ ಅನುಮೋದಿಸಿದ ಕರೆಗಳಿಗೆ ಆ ಮಾದರಿ ಬೆಲೆಯನ್ನು ಬದಲಾಯಿಸುತ್ತದೆ. ಹತ್ತಿರದ ಮಂಡಿ ಕರೆ ಎಫ್‌ಪಿಒಯ ಸೇರಿದ ಪ್ರಯಾಣ. ಸ್ಥಳೀಯ ದಳಾಲಿಯಿಂದ ಇನ್‌ಪುಟ್ ಸಾಲ ತೆಗೆದ ರೈತನನ್ನು ಏಕಾಂಗಿಯಾಗಿ ಮಂಡಿ ಬದಲಾಯಿಸಲು ಕೇಳಬೇಡಿ.",
+        pricesHeading: "ಬೆಲೆ ಮತ್ತು ಆಗಮನ",
+        eachDot: "ಪ್ರತಿ ಚುಕ್ಕೆ ಒಂದು ವರದಿ ದಿನ.",
+        chartLabel: "ಆಗಮನ ಟನ್‌ಗಳಲ್ಲಿ, ಮಾದರಿ ಬೆಲೆ ರೂಪಾಯಿ ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್",
+        noPoints: "ತೋರಿಸಲು ಆಗಮನವಿಲ್ಲ.",
+        axisArrivals: "ಆಗಮನ (ಟನ್)",
+        axisPrice: "ಮಾದರಿ ಬೆಲೆ (₹ ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್)",
+        chartHint: "ಚುಕ್ಕೆಯ ಮೇಲೆ ಸೂಚಕ ಇಡಿ, ಅಥವಾ ಚಾರ್ಟ್ ಆಯ್ದು ಬಾಣದ ಕೀಲಿ ಬಳಸಿ.",
+        tipModal: "ಮಾದರಿ {price}",
+        tipArrivals: "ಆಗಮನ {tonnes}",
+        tipRange: "ಆ ದಿನದ ದರ್ಜೆ: {low} ರಿಂದ {high}",
+        tipLatest: "ಕೊನೆಯ ವರದಿ ದಿನ",
+        deltaHigher: "ಹೆಚ್ಚು",
+        deltaLower: "ಕಡಿಮೆ",
+        deltaLevel: "ಸಮ",
+        deltaTighter: "ಕಡಿಮೆ ಆಗಮನ",
+        deltaHeavier: "ಹೆಚ್ಚು ಆಗಮನ",
+        deltaEasing: "ಸ್ವಲ್ಪ ಕಡಿಮೆ",
+        deltaLegend: "ಬಾಣಗಳು ಕಳೆದ ವರ್ಷದ ಇದೇ ವಾರದೊಂದಿಗೆ ಹೋಲಿಸುತ್ತವೆ. ಹಸಿರು ಮಾರಾಟಕ್ಕೆ ಉತ್ತಮ ವಾರ: ಮಾದರಿ ಕನಿಷ್ಠ 5% ಹೆಚ್ಚು, ಅಥವಾ ಆಗಮನ ಕಳೆದ ವರ್ಷದ 60% ಕ್ಕಿಂತ ಕಡಿಮೆ. ಕೆಂಪು ಮೃದು ಮಾದರಿ, ಅಥವಾ ಭಾರಿ ಆಗಮನದ ವಾರ.",
+        modelHeading: "ಟೊಮೇಟೊ, 7 ದಿನದ ಪರಿಶೀಲನೆ",
+        modelMissing: "ಈ ಸರಣಿಗೆ 7 ದಿನದ ಮಾದರಿ ಇಲ್ಲ.",
+        modelBeat: "ಹೋಲ್ಡ್‌ಔಟ್‌ನಲ್ಲಿ ಎರಡೂ ಆಧಾರಗಳಿಗಿಂತ ಕಡಿಮೆ ದೋಷ.",
+        modelMiss: "ಹೋಲ್ಡ್‌ಔಟ್‌ನಲ್ಲಿ ಎರಡೂ ಆಧಾರಗಳನ್ನು ಮೀರುವುದಿಲ್ಲ.",
+        modelRange: "{start} ರಿಂದ {end}, {n} ದಿನಗಳು.",
+        wapeModel: "ಮಾದರಿ",
+        wapeToday: "ನಾಳೆ ಇಂದಿಗೆ ಸಮ",
+        wapeYear: "ಕಳೆದ ವರ್ಷದ ಇದೇ ವಾರ",
+        callsHeading: "ಕರೆ",
+        callsNote: "ಪ್ರಸ್ತಾವಿತ ಕರೆಗಳು ಇಲ್ಲಿ ನಿಲ್ಲುತ್ತವೆ. ತಡೆಹಿಡಿದ ರೈತರಿಗೆ ಫೋನ್ ಹೋಗುವುದಿಲ್ಲ. ಗೇಟ್ ದರ ಬಂದ ನಂತರ ಬೆಳಗಿನ ತಂಡವನ್ನು ಅನುಮೋದಿಸಿ. ಫೋನ್ ರೈತನನ್ನು ಕೇಳುತ್ತದೆ. ಸರಕು ಕಳುಹಿಸುವುದಿಲ್ಲ.",
+        callsFail: "ಕರೆ ಪಟ್ಟಿ ತೆರೆಯಲಿಲ್ಲ.",
+        noCalls: "ಸರದಿಯಲ್ಲಿ ಕರೆ ಇಲ್ಲ.",
+        callCaption: "ಬೆಳಗಿನ ಕರೆ ತಂಡ",
+        colFarmer: "ರೈತ",
+        colStatus: "ಸ್ಥಿತಿ",
+        colAction: "ಕ್ರಮ",
+        approve: "ಅನುಮೋದಿಸಿ",
+        holdBack: "ತಡೆಹಿಡಿ",
+        callback: "ಮತ್ತೆ ಕರೆ ಮಾಡಿ",
+        callbackLead: "ಅದೇ ರೈತನಿಗೆ ಮತ್ತೆ ಕರೆ.",
+        callbackEarlier: "ಹಿಂದಿನ ಕರೆ: {summary}",
+        callbackQueued: "ಈ ರೈತ ಈಗಾಗಲೇ ಕರೆ ಪಟ್ಟಿಯಲ್ಲಿದ್ದಾರೆ.",
+        callbackFailed: "ಮತ್ತೆ ಕರೆ ಸೇರಲಿಲ್ಲ.",
+        heldBack: "ತಡೆಹಿಡಿದದ್ದು: {reason}.",
+        membersHeading: "ಸದಸ್ಯರು",
+        membersNote: "ಈ ಡೆಸ್ಕ್‌ನ ರೈತರು. ಒಪ್ಪಿಗೆ, ಬಿತ್ತನೆ, ಮತ್ತು ಕೊನೆಯ ಕರೆ.",
+        membersFail: "ಸದಸ್ಯರ ಪಟ್ಟಿ ತೆರೆಯಲಿಲ್ಲ.",
+        memberCaption: "ಈ ಡೆಸ್ಕ್‌ನಲ್ಲಿ {n} ಸದಸ್ಯರು",
+        colMember: "ಸದಸ್ಯ",
+        colPhone: "ಫೋನ್",
+        colLanguage: "ಭಾಷೆ",
+        colPlace: "ಸ್ಥಳ",
+        colSowing: "ಬಿತ್ತನೆ",
+        colLast: "ಕೊನೆಯ ಕರೆ",
+        optIn: "ಒಪ್ಪಿಗೆ {value}",
+        yes: "ಹೌದು",
+        no: "ಇಲ್ಲ",
+        noSowing: "ಇನ್ನೂ ಬಿತ್ತನೆ ಇಲ್ಲ",
+        sownLine: "{crop}, ಬಿತ್ತನೆ {date}",
+        harvested: "ಕೊಯ್ಲು ಆಗಿದೆ",
+        inTransit: "ದಾರಿಯಲ್ಲಿ",
+        noCall: "ಹಿಂದಿನ ಕರೆ ಇಲ್ಲ.",
+        earlierCall: "ಹಿಂದಿನ ಕರೆಯಲ್ಲಿ ಅದೇ ಟೊಮೇಟೊ ಬಿತ್ತನೆ ಖಚಿತವಾಯಿತು. {mandi} ಮಾದರಿ ಬೆಲೆ {date} ರಂದು ₹{modal} ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್.",
+        climateHeading: "2041–2060 ಪರಿಶೀಲನೆ",
+        climateNote: "{district}: ವರ್ಲ್ಡ್‌ಕ್ಲೈಮ್ 2041–2060 ಕಳೆದ 1970–2000, MIROC6 ಮತ್ತು MPI-ESM1-2-HR ಸರಾಸರಿ. ಮಧ್ಯಮ +{moderate}°C, ಮಳೆ ×{rainModerate}. ಹೆಚ್ಚು +{high}°C, ಮಳೆ ×{rainHigh}. ಇದನ್ನು 2015–2024 ಓಪನ್-ಮೀಟಿಯೊ ಸಾಮಾನ್ಯಕ್ಕೆ ಸೇರಿಸಲಾಗಿದೆ.",
+        largestDrop: "ದೊಡ್ಡ ಇಳಿಕೆ: {list}.",
+        largestGain: "ದೊಡ್ಡ ಏರಿಕೆ: {list}.",
+        none: "ಯಾವುದೂ ಇಲ್ಲ",
+        pointsWord: "ಅಂಕಗಳು",
+        climateCaption: "{district} ಸೂಕ್ತತೆ ಅಂಕಗಳು, ಹೆಚ್ಚಿನ ಪರದೆಯ ಬದಲಾವಣೆಯ ಕ್ರಮದಲ್ಲಿ",
+        colCrop: "ಬೆಳೆ",
+        colToday: "ಇಂದು",
+        colModerate: "ಮಧ್ಯಮ 2041–2060",
+        colHigh: "ಹೆಚ್ಚು 2041–2060",
+        colChange: "ಹೆಚ್ಚು ಕಳೆದ ಇಂದು (ಅಂಕಗಳು)",
+        climateFine: "0 ರಿಂದ 100 ಸೂಕ್ತತೆ ಅಂಕ: 60% ತಾಪಮಾನ ಮತ್ತು 40% ಮಳೆ, ಎಫ್‌ಎಒ ಇಕೋಕ್ರಾಪ್ ಮಿತಿಗಳ ಮೇಲೆ. ಬದಲಾವಣೆ ಹೆಚ್ಚಿನ 2041–2060 ಪರದೆ ಕಳೆದ ಇಂದು.",
+        footer1: "ರೈತಲೈನ್ ಈ ಹ್ಯಾಕಥಾನ್‌ನ ಎಫ್‌ಪಿಒ ಡೆಸ್ಕ್. ಇದು ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಜಾಲತಾಣವಲ್ಲ.",
+        footer2: "ಬೆಲೆ ರೂಪಾಯಿ ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್, ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ದಿನಾಂಕವಾರ ವರದಿಯಿಂದ, ಬೆಳಗಿನ ಗೇಟ್ ಉಳಿಸುವವರೆಗೆ. ಆಗಮನ ಮೆಟ್ರಿಕ್ ಟನ್. ಸೂಕ್ತತೆ ಅಂಕ 0 ರಿಂದ 100.",
+        statGate: "ಬೆಳಗಿನ ಗೇಟ್",
+        statModal: "ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ಮಾದರಿ",
+        statArrivals: "7 ದಿನದ ಆಗಮನ",
+        statSeasonal: "ಕಳೆದ ವರ್ಷದ ಇದೇ ವಾರ",
+        statSeasonalArrivals: "ಋತು ಆಗಮನ",
+        act_sell_now: "ಈಗ ಮಾರಾಟ ಮಾಡಿ",
+        act_sell_nearby: "ಎಫ್‌ಪಿಒ ಹತ್ತಿರದ ಮಂಡಿ",
+        act_delay_harvest: "ಕೊಯ್ಲು ತಡೆಹಿಡಿಯಿರಿ (3–4 ದಿನ ಬಳ್ಳಿಯ ಮೇಲೆ)",
+        act_store: "ಒಣ ಗೋದಾಮಿನಲ್ಲಿ ಇಡಿ",
+        act_unknown: "ತಿಳಿದಿಲ್ಲ",
+        reportedAt: "{mandi} ನಲ್ಲಿ, ವರದಿ {date}",
+        shortageYes: "ಕೊರತೆ ನಿಯಮ ತುಂಬಿದೆ.",
+        shortageNo: "ಕೊರತೆ ನಿಯಮ ತುಂಬಿಲ್ಲ.",
+        shortageUnknown: "ಕೊರತೆ ಅಂಕ ಇಲ್ಲ.",
+        seasonalUp: "ಇಂದಿನ ಮಾದರಿ ಕಳೆದ ವರ್ಷದ ಇದೇ ವಾರಕ್ಕಿಂತ ಕನಿಷ್ಠ 5 ಶೇಕಡಾ ಮೇಲಿದೆ.",
+        seasonalDown: "ಇಂದಿನ ಮಾದರಿ ಕಳೆದ ವರ್ಷದ ಇದೇ ವಾರಕ್ಕಿಂತ 5 ಶೇಕಡಾ ಮೇಲಿಲ್ಲ.",
+        forecastUnder: "7 ದಿನದ ಮುನ್ಸೂಚನೆ ಇಂದಿನ ಮಾದರಿಗಿಂತ ಕನಿಷ್ಠ 3 ಶೇಕಡಾ ಕೆಳಗಿದೆ.",
+        forecastOver: "7 ದಿನದ ಮುನ್ಸೂಚನೆ ಇಂದಿನ ಮಾದರಿಗಿಂತ ಕನಿಷ್ಠ 3 ಶೇಕಡಾ ಮೇಲಿದೆ.",
+        forecastFlat: "7 ದಿನದ ಮುನ್ಸೂಚನೆ ಇಂದಿನ ಮಾದರಿಯ 3 ಶೇಕಡಾ ಒಳಗಿದೆ.",
+        noSeasonal: "ಕಳೆದ ವರ್ಷದ ಇದೇ ವಾರ ಸಿಗಲಿಲ್ಲ, ಆದ್ದರಿಂದ ಮಾರಾಟ ಅಥವಾ ಇಡುವ ಸಲಹೆ ಇಲ್ಲ.",
+        noSeries: "ಈ ಬೆಳೆಗೆ ಮಂಡಿ ಸರಣಿ ಲೋಡ್ ಆಗಿಲ್ಲ.",
+        picked: "ಈ ಸರಕು ಈಗಾಗಲೇ ಕೊಯ್ಲಾಗಿದೆ. ಟೊಮೇಟೊ ಮತ್ತು ಬಾಳೆಹಣ್ಣು ತಣ್ಣಗಿನ ಉಗ್ರಾಣವಿಲ್ಲದೆ 3 ರಿಂದ 5 ದಿನ ಇರುತ್ತವೆ. ಮಾರಾಟ ಮಾಡಿ. ಕೊಯ್ದ ಹಣ್ಣನ್ನು ಇಡಬೇಡಿ.",
+        vine: "ಕೊಯ್ಲು 3 ರಿಂದ 4 ದಿನ ತಡೆಹಿಡಿದು ಹಣ್ಣನ್ನು ಬಳ್ಳಿಯ ಮೇಲೆ ಬಿಡಿ. ಕೊಯ್ದ ಟೊಮೇಟೊ ಮತ್ತು ಬಾಳೆಹಣ್ಣು ತಣ್ಣಗಿನ ಉಗ್ರಾಣವಿಲ್ಲದೆ 3 ರಿಂದ 5 ದಿನ ಇರುತ್ತದೆ, ಆದ್ದರಿಂದ ಕೊಯ್ದ ಸರಕನ್ನು ಮಾರಾಟ ಮಾಡಿ, ಗೋದಾಮಿನಲ್ಲಿ ಇಡಬೇಡಿ.",
+        godown: "ಒಣ ಗೋದಾಮಿನಲ್ಲಿ ಇಡಿ.",
+        nearbyReason: "{mandi} ಮಾದರಿ ಬೆಲೆ ₹{modal}. ಸುಮಾರು 70 ಕಿ.ಮೀ.ಗೆ ₹{cost} ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್ ಸಾಗಣೆ ಖರ್ಚಿನ ನಂತರವೂ ₹100 ಉಳಿಯುತ್ತದೆ. ಎಫ್‌ಪಿಒ ಸರಕು ಸೇರಿಸಿ ಆ ಪ್ರಯಾಣವನ್ನು ಕಾಯ್ದಿರಿಸಬಹುದು. ಸ್ಥಳೀಯ ದಳಾಲಿಯಿಂದ ಇನ್‌ಪುಟ್ ಸಾಲ ತೆಗೆದ ರೈತ ಏಕಾಂಗಿಯಾಗಿ ಮಂಡಿ ಬದಲಾಯಿಸಬಾರದು.",
+        gradeModal: "ಹೆಚ್ಚಿನ ಮಾರಾಟ ₹{modal} ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್.",
+        gradeRange: "ಹೆಚ್ಚಿನ ಮಾರಾಟ ₹{modal} ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್. ದರ್ಜೆಗೆ ತಕ್ಕಂತೆ ₹{low} ರಿಂದ ₹{high}.",
+        citation: "ಕರ್ನಾಟಕದ ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ದಿನಾಂಕವಾರ ವರದಿ, api.agmarknet.gov.in. ಬೆಲೆ ರೂಪಾಯಿ ಪ್ರತಿ ಕ್ವಿಂಟಾಲ್. ಆಗಮನ ಮೆಟ್ರಿಕ್ ಟನ್. ಮಂಡಿ: {mandi}. ಕೊನೆಯ ವರದಿ ದಿನ: {date}.",
+        gateCitation: "ಸಲಹೆಗೆ ಬಳಸಿದ ಮಾದರಿ ಎಫ್‌ಪಿಒಯ ಬೆಳಗಿನ ಗೇಟ್ ದರ, {time} ರಲ್ಲಿ ನಮೂದು. ಅಗ್‌ಮಾರ್ಕ್‌ನೆಟ್ ಚೀಟಿ ಹಲವು ಬಾರಿ 24 ರಿಂದ 48 ಗಂಟೆ ತಡವಾಗಿ ಬರುತ್ತದೆ ಮತ್ತು ವಾರಾಂತ್ಯ ಬಿಟ್ಟುಹೋಗಬಹುದು.",
+        status_proposed: "ಪ್ರಸ್ತಾವಿತ",
+        status_approved: "ಅನುಮೋದಿತ",
+        status_suppressed: "ತಡೆಹಿಡಿದ",
+        status_called: "ಕರೆ ಆಗಿದೆ",
+        reason_in_transit: "ದಾರಿಯಲ್ಲಿ",
+        reason_sale_complete: "ಮಾರಾಟ ಮುಗಿದಿದೆ",
+        reason_rain: "ಭಾರೀ ಮಳೆ",
+        reason_admin: "ಡೆಸ್ಕ್ ತಡೆಹಿಡಿದಿದೆ",
+        errCrop: "ಈ ಬೆಳೆ ಪಟ್ಟಿಯಲ್ಲಿಲ್ಲ.",
+        errModal: "ಗೇಟ್ ದರ ಶೂನ್ಯಕ್ಕಿಂತ ಮೇಲಿರಬೇಕು.",
+        errRange: "ಕೆಳ ದರ್ಜೆ ಮೇಲ್ ದರ್ಜೆಗಿಂತ ಮೇಲಿರಬಾರದು.",
+        errGate: "ಗೇಟ್ ದರ ಉಳಿಯಲಿಲ್ಲ.",
+        lang_en: "English",
+        lang_hi: "हिन्दी",
+        lang_kn: "ಕನ್ನಡ"
+      }
+    };
+    const savedLang = sessionStorage.getItem("rl-lang");
+    let lang = savedLang === "hi" || savedLang === "kn" ? savedLang : "en";
+    let lastBoard = null;
+    let lastPeople = null;
+    let lastClimate = null;
+
+    function t(key, vars) {
+      const pack = COPY[lang] || COPY.en;
+      let text = pack[key] ?? COPY.en[key] ?? key;
+      if (vars) {
+        Object.entries(vars).forEach(([name, value]) => {
+          text = text.replaceAll("{" + name + "}", String(value));
+        });
+      }
+      return text;
+    }
+
+    const CROP_EN = {
+      tomato: "Tomato", onion: "Onion", potato: "Potato", chilli: "Dry chilli", banana: "Banana",
+      ragi: "Ragi", maize: "Maize", tur: "Tur", paddy: "Paddy", groundnut: "Groundnut"
+    };
+
+    function cropName(id) {
+      if (lang !== "en" && CROPS[id]) return CROPS[id][lang];
+      return CROP_EN[id] || id;
+    }
+
+    const REASON_SUFFIX = [
+      [" Delay harvest and leave the fruit on the vine for 3 to 4 days. Picked tomato and banana last 3 to 5 days without cold storage, so a harvested load is a sell, not a store.", "vine"],
+      [" Store in a dry godown.", "godown"]
+    ];
+    const REASON_BASE = {
+      "Today's modal is at least 5 percent above the same week last year.": "seasonalUp",
+      "Today's modal is not 5 percent above the same week last year.": "seasonalDown",
+      "The 7-day forecast is at least 3 percent under today's modal.": "forecastUnder",
+      "The 7-day forecast is at least 3 percent over today's modal.": "forecastOver",
+      "The 7-day forecast is within 3 percent of today's modal.": "forecastFlat",
+      "Same week last year is missing, so there is no sell or hold call.": "noSeasonal",
+      "No mandi series is loaded for this crop.": "noSeries",
+      "This load is already harvested. Tomato and banana last 3 to 5 days without cold storage. Sell it. Do not hold picked fruit.": "picked"
+    };
+
+    function translateReason(text) {
+      if (!text || lang === "en") return text || "";
+      let suffix = "";
+      let base = text;
+      for (const [english, key] of REASON_SUFFIX) {
+        if (base.endsWith(english)) {
+          suffix = " " + t(key);
+          base = base.slice(0, -english.length);
+          break;
+        }
+      }
+      if (REASON_BASE[base]) return t(REASON_BASE[base]) + suffix;
+      const nearby = base.match(/^(.+) modal is Rs (\d+)\. After Rs (\d+) per quintal for about 70 km, Rs 100 still remains\./);
+      if (nearby) return t("nearbyReason", { mandi: nearby[1], modal: nearby[2], cost: nearby[3] }) + suffix;
+      return text;
+    }
+
+    function placeName(name) {
+      if (lang === "en" || !PLACES[name]) return name || "";
+      return PLACES[name][lang];
+    }
+
+    function memberName(name) {
+      if (lang === "en" || !MEMBER_NAMES[name]) return name;
+      return MEMBER_NAMES[name][lang];
+    }
+
+    function applyChrome() {
+      root.lang = lang;
+      document.title = t("docTitle");
+      document.querySelectorAll("[data-i18n]").forEach((node) => {
+        node.textContent = t(node.dataset.i18n);
+      });
+      document.querySelector("#size-down").setAttribute("aria-label", t("sizeDown"));
+      document.querySelector("#size-reset").setAttribute("aria-label", t("sizeReset"));
+      document.querySelector("#size-up").setAttribute("aria-label", t("sizeUp"));
+      document.querySelector("#chart").setAttribute("aria-label", t("chartLabel"));
+      document.querySelector(".tabs").setAttribute("aria-label", t("tablist"));
+      document.querySelector("#contrast").textContent = t("contrast");
+    }
+
+    function actionClass(action) {
+      if (action === "sell_now" || action === "sell_nearby") return "action";
+      if (action === "unknown") return "action unknown";
+      return "action hold";
+    }
+
+    function axisValue(value, kind) {
+      if (kind === "price") return "₹" + Math.round(value).toLocaleString("en-IN");
+      if (Math.abs(value) >= 100) return Math.round(value).toLocaleString("en-IN");
+      return value.toFixed(1);
+    }
+
+    let chartPoints = [];
+    let chartIndex = -1;
+
+    function deltaMarkup(kind, glyph, key) {
+      return `<span class="delta ${kind}"><span aria-hidden="true">${glyph}</span> ${t(key)}</span>`;
+    }
+
+    function priceDelta(modal, seasonal) {
+      if (modal == null || seasonal == null || seasonal <= 0) return "";
+      const ratio = modal / seasonal;
+      if (ratio >= 1.05) return deltaMarkup("good", "▲", "deltaHigher");
+      if (ratio <= 0.95) return deltaMarkup("bad", "▼", "deltaLower");
+      return deltaMarkup("flat", "–", "deltaLevel");
+    }
+
+    function arrivalDelta(now, then) {
+      if (now == null || then == null || then <= 0) return "";
+      const ratio = now / then;
+      if (ratio < 0.6) return deltaMarkup("good", "▼", "deltaTighter");
+      if (ratio > 1) return deltaMarkup("bad", "▲", "deltaHeavier");
+      return deltaMarkup("flat", "–", "deltaEasing");
+    }
+
+    function hideTip() {
+      chartIndex = -1;
+      const tip = document.querySelector("#chart-tip");
+      tip.hidden = true;
+      tip.textContent = "";
+      document.querySelectorAll("#chart circle.hot").forEach((node) => node.classList.remove("hot"));
+    }
+
+    function showTip(index) {
+      const point = chartPoints[index];
+      const tip = document.querySelector("#chart-tip");
+      const svg = document.querySelector("#chart");
+      if (!point) return hideTip();
+      chartIndex = index;
+      const low = point.min_price == null ? null : money(point.min_price);
+      const high = point.max_price == null ? null : money(point.max_price);
+      const range = low && high ? `<div>${t("tipRange", { low, high })}</div>` : "";
+      const latest = index === chartPoints.length - 1 ? `<div>${t("tipLatest")}</div>` : "";
+      tip.innerHTML = `<strong>${point.date}</strong><div>${t("tipModal", { price: money(point.modal) })}</div><div>${t("tipArrivals", { tonnes: tonnes(point.arrival_tonnes) })}</div>${range}${latest}`;
+      tip.setAttribute("aria-live", document.activeElement === svg ? "polite" : "off");
+      const dot = svg.querySelector(`circle[data-i="${index}"]`);
+      svg.querySelectorAll("circle.hot").forEach((node) => node.classList.remove("hot"));
+      if (dot) dot.classList.add("hot");
+      tip.hidden = false;
+      const wrap = svg.parentElement.getBoundingClientRect();
+      const box = (dot || svg).getBoundingClientRect();
+      const tipBox = tip.getBoundingClientRect();
+      let left = box.left - wrap.left + box.width + 8;
+      let top = box.top - wrap.top - tipBox.height - 6;
+      if (top < 4) top = box.bottom - wrap.top + 8;
+      if (left + tipBox.width > wrap.width - 4) left = box.left - wrap.left - tipBox.width - 8;
+      tip.style.left = Math.max(4, left) + "px";
+      tip.style.top = Math.max(4, top) + "px";
+    }
+
+    function nearestPoint(event) {
+      const circles = [...document.querySelectorAll("#chart circle.dot")];
+      let best = -1;
+      let bestDist = 22;
+      circles.forEach((node) => {
+        const box = node.getBoundingClientRect();
+        const distance = Math.hypot(event.clientX - (box.left + box.width / 2), event.clientY - (box.top + box.height / 2));
+        if (distance < bestDist) {
+          bestDist = distance;
+          best = Number(node.dataset.i);
+        }
+      });
+      return best;
+    }
+
+    function draw(points) {
+      const svg = document.querySelector("#chart");
+      hideTip();
+      const usable = points.filter((point) => point.modal != null && point.arrival_tonnes != null);
+      chartPoints = usable;
+      if (!usable.length) {
+        svg.innerHTML = `<text x="24" y="40" fill="var(--chart-ink)">${t("noPoints")}</text>`;
+        return;
+      }
+      const left = 112, right = 656, top = 18, bottom = 236;
+      const width = right - left, height = bottom - top;
+      const xs = usable.map((point) => point.arrival_tonnes);
+      const ys = usable.map((point) => point.modal);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const spanX = maxX - minX || 1;
+      const spanY = maxY - minY || 1;
+      const xAt = (value) => left + ((value - minX) / spanX) * width;
+      const yAt = (value) => bottom - ((value - minY) / spanY) * height;
+      const ticks = [0, 0.5, 1];
+      const xTicks = ticks.map((share) => {
+        const value = minX + share * spanX;
+        const x = xAt(value);
+        return `<line x1="${x}" y1="${bottom}" x2="${x}" y2="${bottom + 6}" stroke="var(--chart-line)"/>
+          <text x="${x}" y="${bottom + 22}" text-anchor="middle" fill="var(--chart-muted)" font-size="12">${axisValue(value, "arrival")}</text>`;
+      }).join("");
+      const yTicks = ticks.map((share) => {
+        const value = minY + share * spanY;
+        const y = yAt(value);
+        return `<line x1="${left - 6}" y1="${y}" x2="${left}" y2="${y}" stroke="var(--chart-line)"/>
+          <text x="${left - 10}" y="${y + 4}" text-anchor="end" fill="var(--chart-muted)" font-size="12">${axisValue(value, "price")}</text>`;
+      }).join("");
+      const circles = usable.map((point, index) => {
+        const x = xAt(point.arrival_tonnes);
+        const y = yAt(point.modal);
+        const latest = index === usable.length - 1;
+        const radius = latest ? 5 : 3.2;
+        return `<circle class="dot${latest ? " latest" : ""}" data-i="${index}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${radius}" fill="var(--chart-dot)" opacity="${latest ? 1 : 0.75}"/>`;
+      }).join("");
+      svg.innerHTML = `
+        <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="var(--chart-line)"/>
+        <line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" stroke="var(--chart-line)"/>
+        ${xTicks}${yTicks}${circles}
+        <text x="${(left + right) / 2}" y="286" text-anchor="middle" fill="var(--chart-ink)" font-size="13">${t("axisArrivals")}</text>
+        <text transform="rotate(-90 16 127)" x="16" y="127" text-anchor="middle" fill="var(--chart-ink)" font-size="13">${t("axisPrice")}</text>`;
+    }
+
+    const chart = document.querySelector("#chart");
+    chart.addEventListener("pointermove", (event) => {
+      const index = nearestPoint(event);
+      if (index < 0) return hideTip();
+      if (index !== chartIndex) showTip(index);
+    });
+    chart.addEventListener("pointerleave", () => {
+      if (document.activeElement !== chart) hideTip();
+    });
+    chart.addEventListener("keydown", (event) => {
+      if (!chartPoints.length) return;
+      const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+      if (!keys.includes(event.key)) return;
+      event.preventDefault();
+      let next = chartIndex < 0 ? chartPoints.length - 1 : chartIndex;
+      if (event.key === "ArrowRight") next = Math.min(chartPoints.length - 1, next + 1);
+      if (event.key === "ArrowLeft") next = Math.max(0, next - 1);
+      if (event.key === "Home") next = 0;
+      if (event.key === "End") next = chartPoints.length - 1;
+      showTip(next);
+    });
+    chart.addEventListener("blur", hideTip);
+
+    async function loadBoard() {
+      const crop = cropSelect.value || "tomato";
+      const response = await fetch("/v1/admin/board?crop=" + encodeURIComponent(crop));
+      lastBoard = await response.json();
+      renderBoard();
+    }
+
+    function gradeText(snap) {
+      if (lang === "en") return snap.grade_line || "";
+      if (snap.modal == null) return "";
+      const modal = Math.round(snap.modal);
+      if (snap.min_price == null || snap.max_price == null) return t("gradeModal", { modal });
+      return t("gradeRange", { modal, low: Math.round(snap.min_price), high: Math.round(snap.max_price) });
+    }
+
+    function renderBoard() {
+      if (!lastBoard) return;
+      const body = lastBoard;
+      const crop = cropSelect.value || "tomato";
+      if (!cropSelect.options.length) {
+        body.crops.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item.id;
+          option.dataset.en = item.label;
+          cropSelect.appendChild(option);
+        });
+        cropSelect.value = "tomato";
+      }
+      [...cropSelect.options].forEach((option) => {
+        option.textContent = cropName(option.value);
+      });
+      const snap = body.snapshot;
+      document.querySelector("#as-of").textContent = snap.as_of ? t("asOf", { date: snap.as_of }) : t("asOfNone");
+      const source = snap.price_source === "fpo_gate" ? t("statGate") : t("statModal");
+      document.querySelector("#stats").innerHTML = [
+        [source, money(snap.modal), priceDelta(snap.modal, snap.seasonal_modal)],
+        [t("statArrivals"), tonnes(snap.arrival_7d_tonnes), arrivalDelta(snap.arrival_7d_tonnes, snap.seasonal_arrival_7d_tonnes)],
+        [t("statSeasonal"), money(snap.seasonal_modal), ""],
+        [t("statSeasonalArrivals"), tonnes(snap.seasonal_arrival_7d_tonnes), ""]
+      ].map(([label, value, delta]) => `<div class="stat"><span>${label}</span><strong>${value}${delta}</strong></div>`).join("");
+      document.querySelector("#grade").textContent = gradeText(snap);
+      const action = document.querySelector("#action");
+      action.className = actionClass(snap.action);
+      const shortage = snap.shortage == null ? t("shortageUnknown") : (snap.shortage ? t("shortageYes") : t("shortageNo"));
+      const label = t("act_" + (snap.action || "unknown"));
+      const where = snap.mandi ? " " + t("reportedAt", { mandi: snap.mandi, date: snap.as_of || "—" }) : "";
+      action.innerHTML = `<strong>${label}</strong>${where}. ${translateReason(snap.action_reason)} ${shortage}`;
+      document.querySelector("#citation").textContent = lang === "en"
+        ? (snap.citation || "")
+        : t("citation", { mandi: snap.mandi || "—", date: snap.as_of || "—" }) + (snap.price_source === "fpo_gate" ? " " + t("gateCitation", { time: snap.gate_entered_at || "" }) : "");
+      draw(snap.points || []);
+      const model = document.querySelector("#model");
+      const card = document.querySelector("#model-card");
+      if (!body.evaluation) {
+        card.hidden = crop !== "tomato";
+        model.textContent = crop === "tomato" ? t("modelMissing") : "";
+      } else {
+        card.hidden = false;
+        const evaluation = body.evaluation;
+        const verdict = evaluation.beats_both ? t("modelBeat") : t("modelMiss");
+        model.innerHTML = `<p>${t("modelRange", { start: evaluation.holdout_start, end: evaluation.holdout_end, n: evaluation.n })} ${verdict}</p>
+          <dl class="metrics">
+            <div><dt>${t("wapeModel")}</dt><dd>${evaluation.wape_model_pct}%</dd></div>
+            <div><dt>${t("wapeToday")}</dt><dd>${evaluation.wape_persistence_pct}%</dd></div>
+            <div><dt>${t("wapeYear")}</dt><dd>${evaluation.wape_seasonal_pct}%</dd></div>
+          </dl>`;
+      }
+    }
+
+    function sowingLine(sowing) {
+      if (!sowing) return t("noSowing");
+      const parts = [t("sownLine", { crop: cropName(sowing.crop), date: sowing.sow_date })];
+      if (sowing.harvested) parts.push(t("harvested"));
+      if (sowing.in_transit) parts.push(t("inTransit"));
+      return parts.join(", ");
+    }
+
+    function callSummary(text) {
+      if (!text || text === "No earlier call.") return t("noCall");
+      if (lang === "en") return text;
+      const match = text.match(/^Earlier call confirmed the same tomato sowing\. (.+) modal was Rs (\d+) per quintal on (\d{4}-\d{2}-\d{2})\.?$/);
+      if (match) return t("earlierCall", { mandi: match[1], modal: match[2], date: match[3] });
+      return text;
+    }
+
+    async function loadPeople() {
+      const [farmersResponse, triggerResponse] = await Promise.all([
+        fetch("/v1/admin/farmers"),
+        fetch("/v1/admin/triggers")
+      ]);
+      if (!farmersResponse.ok || !triggerResponse.ok) {
+        lastPeople = { error: true };
+        renderPeople();
+        return;
+      }
+      lastPeople = {
+        farmers: (await farmersResponse.json()).farmers,
+        triggers: (await triggerResponse.json()).triggers
+      };
+      renderPeople();
+    }
+
+    function displayReason(text) {
+      const head = "This is a follow-up call to the same farmer.";
+      if (!text || !text.startsWith(head)) return translateReason(text);
+      const rest = text.slice(head.length).trim();
+      const marker = "Current advice: ";
+      const at = rest.lastIndexOf(marker);
+      let earlier = "";
+      let advice = rest;
+      if (at !== -1) {
+        advice = rest.slice(at + marker.length);
+        const prior = rest.slice(0, at).trim();
+        if (prior.startsWith("Earlier call: ")) earlier = prior.slice("Earlier call: ".length).trim();
+      }
+      const hold = earlier.match(/^Held back: ([a-z_]+)\.$/);
+      const priorLine = hold
+        ? " " + t("heldBack", { reason: t("reason_" + hold[1]) })
+        : (earlier ? " " + t("callbackEarlier", { summary: earlier }) : "");
+      return `${t("callbackLead")}${priorLine} ${translateReason(advice)}`.trim();
+    }
+
+    function renderPeople() {
+      if (!lastPeople) return;
+      if (lastPeople.error) {
+        document.querySelector("#farmers").textContent = t("membersFail");
+        document.querySelector("#queue").textContent = t("callsFail");
+        return;
+      }
+      const farmers = lastPeople.farmers;
+      const triggers = lastPeople.triggers;
+      const waiting = triggers.filter((item) => item.status === "proposed").length;
+      document.querySelector("#calls-count").textContent = waiting ? "(" + waiting + ")" : "";
+      document.querySelector("#farmers").innerHTML = `<table>
+        <caption>${t("memberCaption", { n: farmers.length })}</caption>
+        <thead><tr><th scope="col">${t("colMember")}</th><th scope="col">${t("colPhone")}</th><th scope="col">${t("colLanguage")}</th><th scope="col">${t("colPlace")}</th><th scope="col">${t("colSowing")}</th><th scope="col">${t("colLast")}</th></tr></thead>
+        <tbody>` + farmers.map((person) => `<tr>
+          <th scope="row">${memberName(person.name)}<br><span class="fine">${t("optIn", { value: person.opt_in ? t("yes") : t("no") })}</span></th>
+          <td>${person.phone}</td>
+          <td>${t("lang_" + person.language)}</td>
+          <td>${placeName(person.district)}</td>
+          <td>${sowingLine(person.sowing)}</td>
+          <td>${callSummary(person.calls[0] && person.calls[0].summary)}</td>
+        </tr>`).join("") + "</tbody></table>";
+      if (!triggers.length) {
+        document.querySelector("#queue").innerHTML = `<p class="fine">${t("noCalls")}</p>`;
+        return;
+      }
+      document.querySelector("#queue").innerHTML = `<table>
+        <caption>${t("callCaption")}</caption>
+        <thead><tr><th scope="col">${t("colFarmer")}</th><th scope="col">${t("colStatus")}</th><th scope="col">${t("colAction")}</th></tr></thead><tbody>` +
+        triggers.map((item) => {
+          let buttons = "";
+          if (item.status === "proposed") {
+            buttons = `<button type="button" data-approve="${item.id}">${t("approve")}</button> <button type="button" class="ghost" data-suppress="${item.id}">${t("holdBack")}</button>`;
+          } else if (item.status === "called" || item.status === "suppressed") {
+            buttons = `<button type="button" data-callback="${item.id}">${t("callback")}</button>`;
+          }
+          const why = item.suppress_reason
+            ? t("heldBack", { reason: t("reason_" + item.suppress_reason) }) + " "
+            : "";
+          return `<tr><td>${item.phone}<br>${cropName(item.crop)} · ${item.mandi}<br><span class="fine">${why}${displayReason(item.reason)}</span></td><td>${t("status_" + item.status)}</td><td>${buttons}</td></tr>`;
+        }).join("") + "</tbody></table>";
+    }
+
+    document.querySelector("#queue").addEventListener("click", async (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const approve = button.dataset.approve;
+      const suppress = button.dataset.suppress;
+      const callbackId = button.dataset.callback;
+      const error = document.querySelector("#queue-error");
+      if (approve) await fetch("/v1/admin/triggers/" + approve + "/approve", { method: "POST" });
+      if (suppress) await fetch("/v1/admin/triggers/" + suppress + "/suppress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "admin" })
+      });
+      if (callbackId) {
+        const response = await fetch("/v1/admin/triggers/" + callbackId + "/callback", { method: "POST" });
+        if (!response.ok) {
+          const body = await response.json();
+          const known = {
+            "This farmer is already waiting to be dialed.": "callbackQueued",
+            "Approve this call instead of queueing another.": "callbackFailed"
+          };
+          error.textContent = known[body.detail] ? t(known[body.detail]) : (body.detail || t("callbackFailed"));
+          return;
+        }
+        error.textContent = "";
+      }
+      if (approve || suppress || callbackId) loadPeople();
+    });
+
+    document.querySelector("#gate-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const numberOrNull = (id) => {
+        const raw = document.querySelector(id).value.trim();
+        return raw === "" ? null : Number(raw);
+      };
+      const error = document.querySelector("#gate-error");
+      const response = await fetch("/v1/admin/gate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crop: cropSelect.value || "tomato",
+          modal: numberOrNull("#gate-modal"),
+          min_price: numberOrNull("#gate-min"),
+          max_price: numberOrNull("#gate-max")
+        })
+      });
+      if (!response.ok) {
+        const body = await response.json();
+        const known = {
+          "Unknown crop.": "errCrop",
+          "The gate modal has to be above zero.": "errModal",
+          "The low grade cannot sit above the high grade.": "errRange"
+        };
+        error.textContent = known[body.detail] ? t(known[body.detail]) : (body.detail || t("errGate"));
+        return;
+      }
+      error.textContent = "";
+      loadBoard();
+    });
+    document.querySelector("#gate-clear").addEventListener("click", async () => {
+      await fetch("/v1/admin/gate/" + encodeURIComponent(cropSelect.value || "tomato"), { method: "DELETE" });
+      document.querySelector("#gate-modal").value = "";
+      document.querySelector("#gate-min").value = "";
+      document.querySelector("#gate-max").value = "";
+      document.querySelector("#gate-error").textContent = "";
+      loadBoard();
+    });
+
+    async function loadClimate() {
+      const response = await fetch("/v1/admin/climate?district=Kolar");
+      if (!response.ok) return;
+      lastClimate = await response.json();
+      renderClimate();
+    }
+
+    function renderClimate() {
+      if (!lastClimate) return;
+      const body = lastClimate;
+      const moderate = body.ssp245 || {};
+      const high = body.ssp585 || {};
+      document.querySelector("#climate-note").textContent = t("climateNote", {
+        district: placeName(body.district),
+        moderate: moderate.delta_t_c,
+        rainModerate: moderate.precip_ratio,
+        high: high.delta_t_c,
+        rainHigh: high.precip_ratio
+      });
+      const cards = body.cards || [];
+      const losers = cards.filter((card) => card.change_high < 0).slice(0, 3);
+      const gainers = cards.filter((card) => card.change_high > 0).slice(-3).reverse();
+      const line = (card) => `${cropName(card.crop)} ${card.change_high > 0 ? "+" : ""}${card.change_high} ${t("pointsWord")}`;
+      const rows = cards.map((card) => `<tr>
+        <th scope="row">${cropName(card.crop)}</th>
+        <td>${card.today}</td>
+        <td>${card.moderate}</td>
+        <td>${card.high}</td>
+        <td>${card.change_high > 0 ? "+" : ""}${card.change_high}</td>
+      </tr>`).join("");
+      document.querySelector("#climate").innerHTML =
+        `<p>${t("largestDrop", { list: losers.map(line).join(", ") || t("none") })}</p>` +
+        `<p>${t("largestGain", { list: gainers.map(line).join(", ") || t("none") })}</p>` +
+        `<div class="table-wrap"><table>
+          <caption>${t("climateCaption", { district: placeName(body.district) })}</caption>
+          <thead><tr>
+            <th scope="col">${t("colCrop")}</th>
+            <th scope="col">${t("colToday")}</th>
+            <th scope="col">${t("colModerate")}</th>
+            <th scope="col">${t("colHigh")}</th>
+            <th scope="col">${t("colChange")}</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>` +
+        `<p class="fine">${t("climateFine")}</p>`;
+    }
+
+    const tabs = [...document.querySelectorAll("[role=tab]")];
+    function showTab(id) {
+      tabs.forEach((tab) => {
+        const selected = tab.id === id;
+        tab.setAttribute("aria-selected", selected ? "true" : "false");
+        tab.tabIndex = selected ? 0 : -1;
+        document.getElementById(tab.getAttribute("aria-controls")).hidden = !selected;
+      });
+    }
+    document.querySelector(".tabs").addEventListener("click", (event) => {
+      const tab = event.target.closest("[role=tab]");
+      if (tab) showTab(tab.id);
+    });
+    document.querySelector(".tabs").addEventListener("keydown", (event) => {
+      const keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
+      if (!keys.includes(event.key)) return;
+      const current = tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");
+      if (current < 0 || document.activeElement !== tabs[current]) return;
+      event.preventDefault();
+      let next = current;
+      if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+      if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+      if (event.key === "Home") next = 0;
+      if (event.key === "End") next = tabs.length - 1;
+      tabs[next].focus();
+      showTab(tabs[next].id);
+    });
+
+    function applySize(index) {
+      sizeIndex = index;
+      root.style.fontSize = sizes[index];
+      ["size-down", "size-reset", "size-up"].forEach((id, position) => {
+        document.getElementById(id).setAttribute("aria-pressed", position === index ? "true" : "false");
+      });
+    }
+    document.querySelector("#size-down").addEventListener("click", () => applySize(0));
+    document.querySelector("#size-reset").addEventListener("click", () => applySize(1));
+    document.querySelector("#size-up").addEventListener("click", () => applySize(2));
+    document.querySelector("#contrast").addEventListener("click", (event) => {
+      const on = root.dataset.contrast !== "high";
+      if (on) root.dataset.contrast = "high";
+      else delete root.dataset.contrast;
+      event.currentTarget.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+
+    let lastSync = null;
+
+    function renderSync() {
+      const status = document.querySelector("#sync-status");
+      const button = document.querySelector("#sync");
+      const body = lastSync;
+      if (!body || body.state === "idle") {
+        status.textContent = "";
+        return;
+      }
+      button.disabled = body.state === "running";
+      if (body.state === "running") {
+        const when = body.year ? body.year + "-" + String(body.month).padStart(2, "0") : "";
+        const step = body.crop ? Math.min(body.total || 0, (body.done || 0) + 1) : (body.done || 0);
+        status.textContent = t("syncing", {
+          crop: body.crop ? cropName(body.crop) : "",
+          when,
+          done: step,
+          total: body.total || 0
+        });
+        return;
+      }
+      const latest = (body.latest && body.latest[cropSelect.value]) || "—";
+      if (body.state === "error") {
+        const detail = body.detail === "captcha_reader" ? t("syncReader") : (body.detail || "");
+        status.textContent = t("syncFailed", { detail });
+        return;
+      }
+      const failed = (body.failed || []).length;
+      status.textContent = failed
+        ? t("syncPartial", { n: (body.fetched || []).length, failed, date: latest })
+        : t("syncDone", { n: (body.fetched || []).length, date: latest });
+    }
+
+    async function pollSync() {
+      const response = await fetch("/v1/admin/sync");
+      lastSync = await response.json();
+      renderSync();
+      if (lastSync.state === "running") {
+        setTimeout(pollSync, 2000);
+        return;
+      }
+      if (lastSync.state === "done") loadBoard();
+    }
+
+    document.querySelector("#sync").addEventListener("click", async () => {
+      const button = document.querySelector("#sync");
+      button.disabled = true;
+      lastSync = { state: "running", done: 0, total: 0, crop: null };
+      renderSync();
+      const response = await fetch("/v1/admin/sync", { method: "POST" });
+      lastSync = await response.json();
+      if (!response.ok) lastSync = { state: "error", detail: lastSync.detail || "" };
+      renderSync();
+      if (lastSync.state === "running") pollSync();
+    });
+
+    const langSelect = document.querySelector("#lang");
+    langSelect.value = lang;
+    applyChrome();
+    langSelect.addEventListener("change", () => {
+      lang = langSelect.value === "hi" || langSelect.value === "kn" ? langSelect.value : "en";
+      sessionStorage.setItem("rl-lang", lang);
+      applyChrome();
+      renderBoard();
+      renderPeople();
+      renderClimate();
+      renderSync();
+    });
+
+    cropSelect.addEventListener("change", loadBoard);
+    loadBoard().then(loadPeople);
+    loadClimate();
+  </script>
+</body>
+</html>

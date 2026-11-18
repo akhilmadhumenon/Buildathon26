@@ -1,0 +1,119 @@
+{
+  "source": "WorldClim 2.1 bioclimatic variables at 10 arc-minutes, https://www.worldclim.org/data/cmip6/cmip6climate.html and https://geodata.ucdavis.edu/climate/worldclim/2_1/. BIO1 is annual mean temperature in degrees C. BIO12 is annual precipitation in mm. Baseline is WorldClim 1970-2000. Future is 2041-2060. Delta is the mean of MIROC6 and MPI-ESM1-2-HR at the 10-minute cell covering the district point.",
+  "baseline_period": "1970-2000",
+  "future_period": "2041-2060",
+  "models": [
+    "MIROC6",
+    "MPI-ESM1-2-HR"
+  ],
+  "places": {
+    "Kolar": {
+      "lat": 13.136,
+      "lon": 78.129,
+      "cell_row": 461,
+      "cell_col": 1548,
+      "cell_lat": 13.0833,
+      "cell_lon": 78.0833,
+      "baseline_tmean_c": 24.119,
+      "baseline_precip_mm": 689.0,
+      "models": {
+        "MIROC6_ssp245": {
+          "tmean_c": 24.7,
+          "precip_mm": 759.7,
+          "delta_t_c": 0.581,
+          "delta_precip_mm": 70.7,
+          "precip_ratio": 1.1026
+        },
+        "MPI-ESM1-2-HR_ssp245": {
+          "tmean_c": 25.1,
+          "precip_mm": 698.1,
+          "delta_t_c": 0.981,
+          "delta_precip_mm": 9.1,
+          "precip_ratio": 1.0132
+        },
+        "MIROC6_ssp585": {
+          "tmean_c": 25.2,
+          "precip_mm": 765.0,
+          "delta_t_c": 1.081,
+          "delta_precip_mm": 76.0,
+          "precip_ratio": 1.1103
+        },
+        "MPI-ESM1-2-HR_ssp585": {
+          "tmean_c": 25.4,
+          "precip_mm": 682.5,
+          "delta_t_c": 1.281,
+          "delta_precip_mm": -6.5,
+          "precip_ratio": 0.9906
+        }
+      },
+      "ssp245": {
+        "delta_t_c": 0.781,
+        "delta_precip_mm": 39.9,
+        "precip_ratio": 1.0579,
+        "tmean_c": 24.9,
+        "precip_mm": 728.9
+      },
+      "ssp585": {
+        "delta_t_c": 1.181,
+        "delta_precip_mm": 34.8,
+        "precip_ratio": 1.0504,
+        "tmean_c": 25.3,
+        "precip_mm": 723.8
+      }
+    },
+    "Kalaburagi": {
+      "lat": 17.329,
+      "lon": 76.834,
+      "cell_row": 436,
+      "cell_col": 1541,
+      "cell_lat": 17.25,
+      "cell_lon": 76.9167,
+      "baseline_tmean_c": 27.028,
+      "baseline_precip_mm": 842.0,
+      "models": {
+        "MIROC6_ssp245": {
+          "tmean_c": 27.6,
+          "precip_mm": 932.3,
+          "delta_t_c": 0.572,
+          "delta_precip_mm": 90.3,
+          "precip_ratio": 1.1072
+        },
+        "MPI-ESM1-2-HR_ssp245": {
+          "tmean_c": 28.3,
+          "precip_mm": 791.6,
+          "delta_t_c": 1.272,
+          "delta_precip_mm": -50.4,
+          "precip_ratio": 0.9401
+        },
+        "MIROC6_ssp585": {
+          "tmean_c": 28.1,
+          "precip_mm": 948.4,
+          "delta_t_c": 1.072,
+          "delta_precip_mm": 106.4,
+          "precip_ratio": 1.1264
+        },
+        "MPI-ESM1-2-HR_ssp585": {
+          "tmean_c": 28.3,
+          "precip_mm": 831.8,
+          "delta_t_c": 1.272,
+          "delta_precip_mm": -10.2,
+          "precip_ratio": 0.9879
+        }
+      },
+      "ssp245": {
+        "delta_t_c": 0.922,
+        "delta_precip_mm": 19.9,
+        "precip_ratio": 1.0237,
+        "tmean_c": 27.95,
+        "precip_mm": 861.9
+      },
+      "ssp585": {
+        "delta_t_c": 1.172,
+        "delta_precip_mm": 48.1,
+        "precip_ratio": 1.0571,
+        "tmean_c": 28.2,
+        "precip_mm": 890.1
+      }
+    }
+  }
+}
