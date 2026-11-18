@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 from urllib.parse import urlencode
 
@@ -51,6 +52,85 @@ MARKET_DOWN = {
     "kn": "ಮಂಡಿ ಬೆಲೆ ಈಗ ಸಿಗಲಿಲ್ಲ. ಇನ್ನೊಮ್ಮೆ ಕೇಳಿ.",
 }
 
+SALE_ASK = {
+    "en": "Namaste. This is RaithaLine. Maize at the Bengaluru market is short, and your maize is ready to sell. Will you sell it? Please say yes or no.",
+    "hi": "नमस्ते। राइठालाइन से बात हो रही है। बेंगलुरु मंडी में मक्का कम है, और आपकी मक्का बेचने लायक है। क्या आप बेचेंगे? हाँ या नहीं बोलिए।",
+    "kn": "ನಮಸ್ಕಾರ. ಇದು ರೈತಲೈನ್. ಬೆಂಗಳೂರು ಮಂಡಿಯಲ್ಲಿ ಮೆಕ್ಕೆಜೋಳ ಕಡಿಮೆ ಇದೆ, ನಿಮ್ಮ ಮೆಕ್ಕೆಜೋಳ ಮಾರಾಟಕ್ಕೆ ಸಿದ್ಧವಿದೆ. ಮಾರಾಟ ಮಾಡುವಿರಾ? ಹೌದು ಅಥವಾ ಇಲ್ಲ ಅನ್ನಿ.",
+}
+
+SALE_AGAIN = {
+    "en": "Please say yes or no.",
+    "hi": "हाँ या नहीं बोलिए।",
+    "kn": "ಹೌದು ಅಥವಾ ಇಲ್ಲ ಅನ್ನಿ.",
+}
+
+SALE_HEARD = {
+    "yes": {
+        "en": "Thank you. I have marked yes on the desk.",
+        "hi": "धन्यवाद। डेस्क पर हाँ लिख दिया है।",
+        "kn": "ಧನ್ಯವಾದ. ಡೆಸ್ಕ್ ಮೇಲೆ ಹೌದು ಎಂದು ಬರೆದಿದ್ದೇನೆ.",
+    },
+    "no": {
+        "en": "Thank you. I have marked no on the desk.",
+        "hi": "धन्यवाद। डेस्क पर नहीं लिख दिया है।",
+        "kn": "ಧನ್ಯವಾದ. ಡೆಸ್ಕ್ ಮೇಲೆ ಇಲ್ಲ ಎಂದು ಬರೆದಿದ್ದೇನೆ.",
+    },
+}
+
+SALE_MISSED = {
+    "en": "I heard you, but the desk did not save it. Please say yes or no once more.",
+    "hi": "मैंने सुना, पर डेस्क पर नहीं लिखा। एक बार फिर हाँ या नहीं बोलिए।",
+    "kn": "ನಾನು ಕೇಳಿದೆ, ಆದರೆ ಡೆಸ್ಕ್ ಉಳಿಸಲಿಲ್ಲ. ಇನ್ನೊಮ್ಮೆ ಹೌದು ಅಥವಾ ಇಲ್ಲ ಅನ್ನಿ.",
+}
+
+_YES_WORD = re.compile(r"\b(yes|yeah|yep|yup|haan|hanji|okay|ok)\b", re.IGNORECASE)
+_NO_WORD = re.compile(r"\b(no|nope|nah|nahi|nahin)\b", re.IGNORECASE)
+_YES_SCRIPT = ("हाँ", "हां", "ಹೌದು")
+_NO_SCRIPT = ("नहीं", "नही", "ಇಲ್ಲ", "ಬೇಡ")
+_PENDING: dict[str, dict] = {}
+
+
+def sale_choice(text: str) -> str | None:
+    folded = text.casefold()
+    yes_at = -1
+    no_at = -1
+    for word in _YES_SCRIPT:
+        at = text.find(word)
+        if at >= 0:
+            yes_at = max(yes_at, at)
+    for word in _NO_SCRIPT:
+        at = text.find(word)
+        if at >= 0:
+            no_at = max(no_at, at)
+    for match in _YES_WORD.finditer(folded):
+        yes_at = max(yes_at, match.start())
+    for match in _NO_WORD.finditer(folded):
+        no_at = max(no_at, match.start())
+    if (yes_at < 0 and no_at < 0) or (yes_at >= 0 and no_at >= 0):
+        return None
+    return "yes" if yes_at >= 0 else "no"
+
+
+def _remember_sale(phone: str, record: dict) -> None:
+    key = normalize_phone(phone)
+    if key:
+        _PENDING[key] = record
+
+
+def _forget_sale(phone: str) -> None:
+    key = normalize_phone(phone)
+    if key:
+        _PENDING.pop(key, None)
+
+
+def _pending_sale(phone: str, other: str = "") -> dict | None:
+    for key in (normalize_phone(phone), normalize_phone(other)):
+        if key and key in _PENDING:
+            return _PENDING[key]
+    if len(_PENDING) == 1:
+        return next(iter(_PENDING.values()))
+    return None
+
 
 class ExotelCall:
     def __init__(self, socket: web.WebSocketResponse) -> None:
@@ -61,10 +141,13 @@ class ExotelCall:
         self._saved_place = ""
         self._stored = False
         self.phone = ""
+        self.other_phone = ""
         self.call_sid = ""
         self._ending = False
         self.stream_sid = ""
         self.language = "en"
+        self.confirm: dict | None = None
+        self._sale_done = False
         self.turns: list[tuple[str, str]] = []
         self._turn = 0
         self._ignore_until = 0.0
@@ -123,10 +206,55 @@ class ExotelCall:
         await self.send_audio(pcm, self._turn)
 
     async def greet(self) -> None:
+        pending = _pending_sale(self.phone, self.other_phone)
+        if pending:
+            self.confirm = pending
+            language = pending.get("language") or "en"
+            self.language = language if language in {"en", "hi", "kn"} else "en"
+            await self.speak(SALE_ASK[self.language])
+            return
         self.language = "en"
         await self.play_cached(GREETING["en"], "greet-en")
 
-    async def reply_to(self, text: str, language_hint: str | None) -> None:
+    async def _report_sale(self, choice: str) -> bool:
+        pending = self.confirm or {}
+        trigger_id = pending.get("trigger_id")
+        if not trigger_id or self.http is None:
+            return False
+        url = f"{board_url()}/v1/admin/triggers/{trigger_id}/answer"
+        try:
+            async with self.http.post(
+                url,
+                json={"answer": choice},
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as response:
+                if response.status >= 400:
+                    logger.warning("desk answer returned %s", response.status)
+                    return False
+        except Exception:
+            logger.exception("desk answer failed")
+            return False
+        for key in (normalize_phone(self.phone), normalize_phone(self.other_phone)):
+            if key:
+                _PENDING.pop(key, None)
+        return True
+
+    async def reply_to(self, text: str, language_hint: str | None, final: bool = True) -> None:
+        if self.confirm and not self._sale_done:
+            if not final:
+                return
+            self.turns.append(("user", text))
+            choice = sale_choice(text)
+            if choice is None:
+                await self.speak(SALE_AGAIN.get(self.language, SALE_AGAIN["en"]))
+                return
+            if not await self._report_sale(choice):
+                await self.speak(SALE_MISSED.get(self.language, SALE_MISSED["en"]))
+                return
+            self._sale_done = True
+            await self.speak(SALE_HEARD[choice].get(self.language, SALE_HEARD[choice]["en"]))
+            await self.end_call()
+            return
         started = time.perf_counter()
         self.language = detect_language(text, language_hint, current=self.language)
         logger.info("language %s", self.language)
@@ -175,12 +303,17 @@ class ExotelCall:
         self._cancel_task(self._partial_task)
         self._cancel_task(self._hold_task)
 
-    def _begin_reply(self, transcript: str, hint: str) -> None:
+    def _worth_hearing(self, transcript: str) -> bool:
+        if self.confirm and not self._sale_done and sale_choice(transcript):
+            return True
+        return should_answer(transcript)
+
+    def _begin_reply(self, transcript: str, hint: str, final: bool = True) -> None:
         transcript = correct_transcript(transcript)
         if _is_echo(transcript):
             logger.info("ignored echo %s", transcript[:80])
             return
-        if not should_answer(transcript) or transcript == self._last_heard:
+        if not self._worth_hearing(transcript) or transcript == self._last_heard:
             if transcript != self._last_heard:
                 logger.info("ignored %s", transcript[:80])
             return
@@ -188,16 +321,16 @@ class ExotelCall:
         self._last_heard = transcript
         replacing = self._reply_task is not None and not self._reply_task.done()
         self._cancel_task(self._reply_task)
-        self._reply_task = asyncio.create_task(self._reply_after_clear(transcript, hint, replacing))
+        self._reply_task = asyncio.create_task(self._reply_after_clear(transcript, hint, replacing, final))
 
-    async def _reply_after_clear(self, transcript: str, hint: str, replacing: bool) -> None:
+    async def _reply_after_clear(self, transcript: str, hint: str, replacing: bool, final: bool = True) -> None:
         if replacing:
             await self.clear_playback()
-        await self.reply_to(transcript, hint)
+        await self.reply_to(transcript, hint, final)
 
     def _hold(self, transcript: str, hint: str) -> None:
         transcript = correct_transcript(transcript)
-        if _is_echo(transcript) or not should_answer(transcript):
+        if _is_echo(transcript) or not self._worth_hearing(transcript):
             logger.info("ignored %s", transcript[:80])
             return
         logger.info("holding %s", transcript[:120])
@@ -214,7 +347,7 @@ class ExotelCall:
             self._begin_reply(held[0], held[1])
 
     def _note_partial(self, transcript: str, hint: str) -> None:
-        if _is_echo(transcript) or not should_answer(transcript):
+        if _is_echo(transcript) or not self._worth_hearing(transcript):
             return
         self._cancel_task(self._partial_task)
         self._partial_task = asyncio.create_task(self._answer_partial(transcript, hint))
@@ -226,7 +359,7 @@ class ExotelCall:
         if not self._hearing():
             self._hold(transcript, hint)
             return
-        self._begin_reply(transcript, hint)
+        self._begin_reply(transcript, hint, final=False)
 
     async def on_stt(self, event: dict) -> None:
         if self._ending:
@@ -524,6 +657,7 @@ async def handle_media(request: web.Request) -> web.WebSocketResponse:
                 call.stream_sid = str(start.get("stream_sid") or event.get("stream_sid") or "")
                 call.call_sid = str(start.get("call_sid") or "")
                 call.phone = normalize_phone(str(start.get("from") or ""))
+                call.other_phone = normalize_phone(str(start.get("to") or ""))
                 call.caller.phone = call.phone
                 call.started_at = now_ist()
                 logger.info("exotel call from %s", call.phone or "unknown")
@@ -615,6 +749,69 @@ async def _close_clients(app: web.Application) -> None:
         await session.close()
 
 
+def _exotel_from(phone: str) -> str:
+    digits = "".join(char for char in phone if char.isdigit())
+    if digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+    if digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
+    if len(digits) != 10:
+        return ""
+    return "0" + digits
+
+
+async def handle_dial(request: web.Request) -> web.Response:
+    """Call this farmer and land them on the same Voicebot applet."""
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        body = {}
+    caller = _exotel_from(str(body.get("phone") or ""))
+    if not caller:
+        return web.json_response({"error": "phone"}, status=400)
+    language = str(body.get("language") or "en")
+    if language not in {"en", "hi", "kn"}:
+        language = "en"
+    _remember_sale(
+        caller,
+        {
+            "trigger_id": body.get("trigger_id"),
+            "language": language,
+            "crop": str(body.get("crop") or "maize"),
+            "district": str(body.get("district") or ""),
+        },
+    )
+    sid = os.environ.get("EXOTEL_ACCOUNT_SID", "")
+    key = os.environ.get("EXOTEL_API_KEY", "")
+    token = os.environ.get("EXOTEL_API_TOKEN", "")
+    host = os.environ.get("EXOTEL_SUBDOMAIN", "api.exotel.com")
+    exophone = os.environ.get("EXOTEL_EXOPHONE", "")
+    flow = os.environ.get("EXOTEL_VOICE_URL", "")
+    if not (sid and key and token and exophone and flow):
+        _forget_sale(caller)
+        return web.json_response({"error": "exotel"}, status=503)
+    url = f"https://{host}/v1/Accounts/{sid}/Calls/connect.json"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                data={"From": caller, "CallerId": exophone, "Url": flow, "CallType": "trans"},
+                auth=aiohttp.BasicAuth(key, token),
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                text = await response.text()
+                if response.status >= 400:
+                    logger.warning("exotel dial returned %s", response.status)
+                    _forget_sale(caller)
+                    return web.json_response({"error": text[:180]}, status=502)
+    except Exception:
+        logger.exception("exotel dial failed")
+        _forget_sale(caller)
+        return web.json_response({"error": "exotel"}, status=502)
+    logger.info("dialed %s", caller)
+    return web.json_response({"ok": True, "phone": caller})
+
+
 def build_app() -> web.Application:
     app = web.Application()
     app["memory"] = Memory()
@@ -623,6 +820,7 @@ def build_app() -> web.Application:
     app.on_cleanup.append(_close_clients)
     app.router.add_get("/health", lambda _request: web.json_response({"ok": True}))
     app.router.add_get("/exotel/voicebot", handle_voicebot)
+    app.router.add_post("/exotel/dial", handle_dial)
     app.router.add_get("/exotel/media", handle_media)
     return app
 
