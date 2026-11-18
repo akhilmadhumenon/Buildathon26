@@ -57,13 +57,19 @@ async def live_facts(
     except Exception:
         logger.exception("raitha board failed")
         boards = []
-    if not boards:
-        return (
-            f"Caller phone: {phone or 'unknown'}.\n"
-            "Market prices could not be loaded. Ask them to say the question once more. "
-            "Do not invent a price."
-        )
-    return format_market_facts(boards, phone, caller_point, asked, _question_need(latest))
+    need = _question_need(latest)
+    parts: list[str] = []
+    if boards:
+        parts.append(format_market_facts(boards, phone, caller_point, asked, need))
+    if "plant" in need:
+        parts.append(await _planting_facts(session, caller_point, latest, asked))
+    if parts:
+        return "\n".join(part for part in parts if part)
+    return (
+        f"Caller phone: {phone or 'unknown'}.\n"
+        "Market prices could not be loaded. Ask them to say the question once more. "
+        "Do not invent a price."
+    )
 
 
 async def snapshots(session: aiohttp.ClientSession) -> list[dict]:
@@ -132,7 +138,11 @@ def format_market_facts(
     """A short price sheet. Extra lines are included only for what this question asked."""
     focus = focus or []
     lines = [f"Caller phone: {phone or 'unknown'}.", _fact_rule(need)]
-    detailed = {crop for crop in focus} or {str(board.get("crop") or "") for board in boards}
+    # An open planting question has no crop yet, so keep every price line short.
+    plant_survey = bool(need and "plant" in need and not focus)
+    detailed = set() if plant_survey else (
+        {crop for crop in focus} or {str(board.get("crop") or "") for board in boards}
+    )
     for board in boards:
         crop = str(board.get("crop") or "")
         if crop in detailed:
@@ -162,12 +172,21 @@ def _question_need(text: str) -> set[str]:
         needed.add("forecast")
     if _asks_grade(text):
         needed.add("grade")
+    if _asks_plant(text):
+        needed.add("plant")
+    if _asks_price(text):
+        needed.add("price")
     if not needed:
         needed.add("price")
     return needed
 
 
 def _fact_rule(need: set[str] | None) -> str:
+    if need and "plant" in need and "price" not in need and "sell" not in need:
+        return (
+            "They asked what to plant. Recommend from the weekly plan scores. "
+            "Name the crop with the higher today score. Do not invent a crop or a score."
+        )
     if need == {"price"}:
         return (
             "They asked for a price. Say the modal, the mandi, and the reported date. "
@@ -177,6 +196,205 @@ def _fact_rule(need: set[str] | None) -> str:
         "Prices are rupees per quintal from the mandi report. Modal is the usual price. "
         "Use a forecast, the grade range, another mandi, or the sell advice only when that line is included below."
     )
+
+
+_PLANT = (
+    "plant",
+    "planting",
+    "sow",
+    "sowing",
+    "which crop",
+    "what crop",
+    "what should i grow",
+    "बोना",
+    "बोऊं",
+    "बोऊँ",
+    "बोऊ",
+    "कौन सी फसल",
+    "कौनसी फसल",
+    "कौन-सी फसल",
+    "फसल लगा",
+    "फसल बो",
+    "लगाना",
+    "लगाने",
+    "लगाऊं",
+    "लगाऊँ",
+    "ಬಿತ್ತ",
+    "ನಾಟಿ",
+    "ಯಾವ ಬೆಳೆ",
+    "ಬೆಳೆ ಯಾವುದು",
+    "ಬೆಳೆಯಲು",
+    "ಬೆಳೆಯಬೇಕು",
+)
+_PRICE = ("price", "rate", "भाव", "दाम", "रेट", "ಬೆಲೆ", "ದರ", "ದಾಮ")
+_WHICH_CROP = ("which crop", "what crop", "कौन सी फसल", "कौनसी फसल", "ಕೌನ್", "ಯಾವ ಬೆಳೆ", "ಬೆಳೆ ಯಾವುದು")
+_SCORE = re.compile(
+    r"scores\s+([0-9]+(?:\.[0-9]+)?)\s+today\b.*?([0-9]+(?:\.[0-9]+)?)\s+under the moderate\b"
+    r".*?([0-9]+(?:\.[0-9]+)?)\s+under the high\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_PLAN_CACHE: dict[tuple[str, str], tuple[float, dict]] = {}
+
+
+def _asks_plant(question: str) -> bool:
+    text = (question or "").lower()
+    return any(word in text for word in _PLANT)
+
+
+def _asks_price(question: str) -> bool:
+    text = (question or "").lower()
+    return any(word in text for word in _PRICE)
+
+
+def _asks_which_crop(question: str) -> bool:
+    text = (question or "").lower()
+    return any(word in text for word in _WHICH_CROP)
+
+
+def _planting_crops(latest: str, asked: list[str]) -> tuple[list[str], bool]:
+    """Crops to score, and whether the farmer already named the crop."""
+    named = _mentioned(latest, CROP_ALIASES)
+    if named:
+        return named, True
+    if _asks_which_crop(latest) or not asked:
+        return list(DEFAULT_CROPS), False
+    return list(asked), True
+
+
+def _district_name(caller_point: dict | None) -> str:
+    """District the weekly plan should score. Empty when the call has no place."""
+    if not caller_point:
+        return ""
+    name = str(caller_point.get("name") or "").strip().lower()
+    for district in DISTRICT_COORDS:
+        if district in name:
+            return district.title()
+    lat, lon = caller_point.get("lat"), caller_point.get("lon")
+    if lat is None or lon is None or not DISTRICT_COORDS:
+        return ""
+    nearest = min(
+        DISTRICT_COORDS,
+        key=lambda district: _km_between(lat, lon, DISTRICT_COORDS[district][0], DISTRICT_COORDS[district][1]),
+    )
+    return nearest.title()
+
+
+def format_planting(plans: list[dict], district: str, named: bool) -> str:
+    """One recommendation sheet from weekly-plan climate claims."""
+    if not district:
+        return (
+            "Weekly planting plan: their district is not known. "
+            "Ask where they farm before naming a crop. Do not invent a crop."
+        )
+    ranked: list[tuple[float, str]] = []
+    weather = ""
+    for body in plans:
+        line, today, claim_weather = _plan_score(body)
+        if line is None or today is None:
+            continue
+        ranked.append((today, line))
+        weather = weather or claim_weather
+    if not ranked:
+        return (
+            f"Weekly planting plans for {district} could not be loaded. "
+            "Ask them to say the question once more. Do not invent a crop or a score."
+        )
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    if named and len(ranked) == 1:
+        lead = (
+            f"Weekly plan for the crop they named, at {district}. "
+            "Say whether this crop suits this district. A higher today score suits it better. "
+            "Do not switch them to a different crop."
+        )
+    else:
+        lead = (
+            f"Weekly planting plans for {district}. "
+            "Recommend one crop, the highest today score. "
+            "If several share that score, name one and say the others match it. Do not read every score."
+        )
+    lines = [lead, *[line for _, line in ranked]]
+    if weather:
+        lines.append(f"Weather: {weather}")
+    return "\n".join(lines)
+
+
+def _plan_score(body: dict) -> tuple[str | None, float | None, str]:
+    if not isinstance(body, dict) or body.get("refused"):
+        return None, None, ""
+    claims = body.get("claims") if isinstance(body.get("claims"), list) else []
+    climate = ""
+    weather = ""
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        text = str(claim.get("claim") or "").strip()
+        if claim.get("agent") == "climate":
+            climate = text
+        elif claim.get("agent") == "weather" and text:
+            weather = text
+    match = _SCORE.search(climate)
+    if not match:
+        return None, None, weather
+    today = float(match.group(1))
+    crop = body.get("crop") or "crop"
+    where = body.get("district") or ""
+    line = (
+        f"- {crop} at {where}: today {match.group(1)}, "
+        f"moderate {match.group(2)}, high {match.group(3)}."
+    )
+    return line, today, weather
+
+
+async def _planting_facts(
+    session: aiohttp.ClientSession,
+    caller_point: dict | None,
+    latest: str,
+    asked: list[str],
+) -> str:
+    district = _district_name(caller_point)
+    crops, named = _planting_crops(latest, asked)
+    if not district:
+        return format_planting([], "", named)
+    timeout = aiohttp.ClientTimeout(total=8)
+    import asyncio
+
+    found = await asyncio.gather(
+        *(_one_plan(session, crop, district, latest, timeout) for crop in crops),
+        return_exceptions=True,
+    )
+    plans = []
+    for item in found:
+        if isinstance(item, dict):
+            plans.append(item)
+        elif isinstance(item, Exception):
+            logger.warning("raitha weekly plan failed: %s", item)
+    return format_planting(plans, district, named and len(crops) == 1)
+
+
+async def _one_plan(
+    session: aiohttp.ClientSession,
+    crop: str,
+    district: str,
+    question: str,
+    timeout: aiohttp.ClientTimeout,
+) -> dict:
+    key = (crop, district.lower())
+    cached = _PLAN_CACHE.get(key)
+    now = time.monotonic()
+    if cached and now - cached[0] < _TTL_SECONDS:
+        return cached[1]
+    payload = {"crop": crop, "district": district, "question": (question or "")[:400]}
+    async with session.post(
+        f"{_base_url()}/v1/plans/weekly",
+        json=payload,
+        timeout=timeout,
+    ) as response:
+        response.raise_for_status()
+        body = await response.json(content_type=None)
+    plan = body if isinstance(body, dict) else {}
+    if plan:
+        _PLAN_CACHE[key] = (now, plan)
+    return plan
 
 
 _WAIT = ("wait", "spoil", "perish", "store", "how long", "कितने दिन", "ಎಷ್ಟು ದಿನ", "ಕೆಡ", "खराब")

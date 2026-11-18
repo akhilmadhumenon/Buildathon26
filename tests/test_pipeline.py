@@ -180,6 +180,62 @@ class PipelineTests(unittest.TestCase):
         sell = format_market_facts(boards, "", None, ["tomato"], {"sell"})
         self.assertIn("Advice if they ask whether to sell", sell)
         self.assertIn("The trip is worth it", sell)
+        planting = format_market_facts(boards, "", None, [], {"plant"})
+        self.assertIn("They asked what to plant.", planting)
+        self.assertNotIn("They asked for a price.", planting)
+        self.assertNotIn("Advice if they ask whether to sell", planting)
+
+    def test_a_planting_question_gets_a_weekly_plan(self) -> None:
+        from kisan.raitha import _district_name, _planting_crops, _question_need, format_planting
+
+        self.assertEqual(_question_need("which crop should I plant"), {"plant"})
+        self.assertEqual(_question_need("I am planning on planting tomato"), {"plant"})
+        self.assertEqual(_question_need("what is the tomato price"), {"price"})
+        self.assertEqual(_question_need("कौन सी फसल लगाऊँ"), {"plant"})
+        self.assertIn("plant", _question_need("ಹಾಸನದಲ್ಲಿ ಯಾವ ಬೆಳೆ ಬಿತ್ತಬೇಕು"))
+        crops, named = _planting_crops("I am planning on planting tomato", [])
+        self.assertEqual(crops, ["tomato"])
+        self.assertTrue(named)
+        survey, named_survey = _planting_crops("which crop should I plant", [])
+        self.assertGreater(len(survey), 1)
+        self.assertFalse(named_survey)
+        self.assertEqual(_district_name({"name": "Kolar", "lat": 13.14, "lon": 78.13}), "Kolar")
+        self.assertEqual(_district_name(None), "")
+
+        def _plan(crop: str, district: str, today: str, moderate: str, high: str) -> dict:
+            return {
+                "crop": crop,
+                "district": district,
+                "claims": [
+                    {
+                        "agent": "climate",
+                        "claim": (
+                            f"{crop} scores {today} today at {district}, "
+                            f"{moderate} under the moderate 2041-2060 screen, "
+                            f"and {high} under the high screen."
+                        ),
+                    },
+                    {"agent": "weather", "claim": "Rain over the next two days at Kolar is 0.0 mm."},
+                ],
+            }
+
+        plans = [
+            _plan("paddy", "Kolar", "54.1", "59.3", "60.0"),
+            _plan("ragi", "Kolar", "100.0", "100.0", "100.0"),
+            _plan("onion", "Kolar", "94.6", "93.6", "90.3"),
+        ]
+        sheet = format_planting(plans, "Kolar", False)
+        self.assertLess(sheet.index("ragi"), sheet.index("onion"))
+        self.assertLess(sheet.index("onion"), sheet.index("paddy"))
+        self.assertIn("highest today score", sheet)
+        self.assertIn("Weather: Rain over the next two days at Kolar is 0.0 mm.", sheet)
+        one = format_planting([plans[1]], "Kolar", True)
+        self.assertIn("crop they named", one)
+        self.assertIn("today 100.0", one)
+        self.assertNotIn("highest today score", one)
+        missing = format_planting([], "", False)
+        self.assertIn("district is not known", missing)
+        self.assertIn("Do not invent a crop", missing)
 
     def test_board_answers_when_the_model_is_busy(self) -> None:
         from kisan import raitha
