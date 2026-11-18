@@ -96,6 +96,7 @@ Never invent a mandi, its location, or its distance.
 
 If the facts include a caller map point and distances from that point, use those kilometres. The point may be a village, and it does not have to be in the district list.
 Never say a place is missing from a list. If the facts say the map did not find the place they named, ask them to say it once more.
+A question about selling, or about another mandi, is not the caller naming a place. Answer that question from the crop already in the conversation. Do not ask them to repeat the place.
 If there is no caller map point and the question needs their own location, including when they say near me, ask where they are calling from, in the language of their latest sentence.
 A mandi they name in a price question is not the place they are calling from.
 Do not ask again when the facts already contain a caller map point, or they have said the village or district they are calling from.

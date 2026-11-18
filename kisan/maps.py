@@ -27,10 +27,17 @@ _STOP = {
 
 _cache: dict[str, dict | None] = {}
 
+_LOCATING = {
+    "from", "calling", "call", "live", "living", "stay", "staying",
+    "village", "town", "near", "nearest", "closest", "nearby",
+}
+_NOT_A_PLACE = ("sell", "better", "another", "other", "worth", "बेच", "बेहतर", "दूसरी", "ಮಾರ", "ಬೇರೆ")
+
 
 def named_place(text: str) -> str:
     """A place the farmer just gave, when the sentence is about where they are."""
-    words = re.findall(r"[^\W\d_]+", (text or "").lower())
+    raw = text or ""
+    words = re.findall(r"[^\W\d_]+", raw.lower())
     content = [word for word in words if word not in _STOP]
     unknown: list[str] = []
     known: list[str] = []
@@ -45,10 +52,18 @@ def named_place(text: str) -> str:
         if len(word) < 4:
             continue
         unknown.append(word)
-    asks_near = any(word in words for word in ("nearest", "closest", "near", "nearby"))
-    if unknown and (not has_crop or asks_near):
+    locating = any(word in words for word in _LOCATING)
+    bare_name = (
+        not has_crop
+        and not locating
+        and len(content) <= 3
+        and not any(marker in raw.lower() for marker in _NOT_A_PLACE)
+    )
+    if not locating and not bare_name:
+        return ""
+    if unknown and (not has_crop or locating):
         return " ".join(unknown[:3])
-    if known and not has_crop and (asks_near or len(content) <= 4):
+    if known and not has_crop:
         return known[-1]
     return ""
 

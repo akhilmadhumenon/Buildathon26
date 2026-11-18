@@ -206,6 +206,15 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(detect_language("Mujhe tamatar bechna hai"), "hi")
         raitha._CACHE.clear()
 
+    def test_a_sell_question_is_not_a_village(self) -> None:
+        from kisan.maps import named_place
+
+        question = "Should I sell here, or is another mandi better? क्या यहीं बेचूँ, या दूसरी मंडी बेहतर है?"
+        self.assertEqual(named_place(question), "")
+        self.assertEqual(named_place("क्या यहीं बेचूँ, या दूसरी मंडी बेहतर है?"), "")
+        self.assertEqual(named_place("I am calling from Kudlu"), "kudlu")
+        self.assertEqual(named_place("Kolar"), "Kolar")
+
     def test_sarvam_reads_a_chat_reply(self) -> None:
         from kisan.sarvam_reply import _message_text, chat_payload
 
