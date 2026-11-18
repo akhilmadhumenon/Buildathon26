@@ -1,0 +1,7 @@
+{
+  "trunk": {
+    "name": "India inbound",
+    "numbers": ["+9180XXXXXXXX"],
+    "krispEnabled": true
+  }
+}
